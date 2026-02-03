@@ -35,6 +35,15 @@ if not exist "node_modules" (
     )
 )
 
+REM Check if build folder already exists
+if exist "build\index.html" (
+    echo.
+    echo Found existing build. Skipping rebuild...
+    echo To force rebuild, delete the build folder first.
+    echo.
+    goto serve
+)
+
 echo.
 echo [1/2] Building production version...
 echo      This may take 1-2 minutes...
@@ -62,13 +71,13 @@ if not exist "build" (
     exit /b 1
 )
 
+:serve
 color 0A
 echo.
 echo ========================================================
-echo  BUILD SUCCESSFUL!
+echo  Starting Production Server
 echo ========================================================
 echo.
-echo [2/2] Starting production server...
 echo.
 echo The application will be available at:
 echo.

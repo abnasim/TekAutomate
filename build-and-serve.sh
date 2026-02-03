@@ -28,35 +28,41 @@ if [ ! -d "node_modules" ]; then
     fi
 fi
 
-echo ""
-echo "[1/2] Building production version..."
-echo "      This may take 1-2 minutes..."
-echo ""
-
-npm run build
-
-if [ $? -ne 0 ]; then
+# Check if build folder already exists
+if [ -f "build/index.html" ]; then
     echo ""
-    echo "========================================================"
-    echo "  BUILD FAILED!"
-    echo "========================================================"
+    echo "Found existing build. Skipping rebuild..."
+    echo "To force rebuild, delete the build folder first."
     echo ""
-    echo "Check the errors above and try again."
-    exit 1
-fi
+else
+    echo ""
+    echo "[1/2] Building production version..."
+    echo "      This may take 1-2 minutes..."
+    echo ""
 
-# Check if build folder was created
-if [ ! -d "build" ]; then
-    echo "ERROR: Build folder not created!"
-    exit 1
+    npm run build
+
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "========================================================"
+        echo "  BUILD FAILED!"
+        echo "========================================================"
+        echo ""
+        echo "Check the errors above and try again."
+        exit 1
+    fi
+
+    # Check if build folder was created
+    if [ ! -d "build" ]; then
+        echo "ERROR: Build folder not created!"
+        exit 1
+    fi
 fi
 
 echo ""
 echo "========================================================"
-echo "  BUILD SUCCESSFUL!"
+echo "  Starting Production Server"
 echo "========================================================"
-echo ""
-echo "[2/2] Starting production server..."
 echo ""
 echo "The application will be available at:"
 echo ""
