@@ -31,8 +31,8 @@ Open a terminal in the project folder and run the setup script:
 - **macOS:** Run `./start.sh`
 
 **Option B - Production Mode** (faster, optimized):
-- **Windows:** Double-click `build-and-serve.bat`
-- **macOS:** Run `./build-and-serve.sh`
+- **Windows:** Double-click `TekAutomate.bat`
+- **macOS:** Run `./TekAutomate.sh`
 
 The application will open in your browser at http://localhost:3000
 
