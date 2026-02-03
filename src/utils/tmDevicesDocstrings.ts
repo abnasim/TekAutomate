@@ -5,7 +5,8 @@
  * SCPI syntax information for commands that may not have it in manual entries.
  */
 
-let docstringsCache: Map<string, any> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let _docstringsCache: Map<string, any> | null = null;
 let docstringsData: any = null;
 let docstringsLoading: Promise<any> | null = null;
 
@@ -104,7 +105,7 @@ function findDocstringEntry(command: string, docstrings: any): any | null {
   }
   
   // Strategy 3: Match by scpiSyntax header directly
-  for (const [fullKey, value] of Object.entries(docstrings)) {
+  for (const [, value] of Object.entries(docstrings)) {
     if (typeof value !== 'object' || value === null) continue;
     
     const scpiSyntax = (value as any).scpiSyntax || '';
@@ -117,7 +118,7 @@ function findDocstringEntry(command: string, docstrings: any): any | null {
   }
   
   // Strategy 4: Match by path in the value object (fallback)
-  for (const [fullKey, value] of Object.entries(docstrings)) {
+  for (const [, value] of Object.entries(docstrings)) {
     if (typeof value !== 'object' || value === null) continue;
     
     const entryPath = (value as any).path?.toLowerCase() || '';

@@ -2,11 +2,11 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   Trash2, Copy, Download, ChevronRight, ChevronLeft, AlertCircle, Settings, Search,
   Upload, Folder, Zap, X, Undo2, Redo2, FileJson, Code2, ChevronDown, ChevronUp,
-  GitBranch, RefreshCw, Star,
+  RefreshCw, Star,
   Monitor, Cpu, Battery, Gauge, Activity, Radio, ArrowUp, ArrowDown, Edit, GraduationCap, Plus, BookOpen, HelpCircle,
   // Better step icons
   PlugZap, Unplug, Send, Timer, MessageSquare, HardDriveDownload, ShieldAlert, FolderOpen, Maximize2, Camera,
-  FolderInput, Save, Sparkles, Check, ClipboardPaste
+  FolderInput, Sparkles, Check, ClipboardPaste
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { BlocklyBuilder } from './components/BlocklyBuilder';
@@ -189,12 +189,9 @@ interface SignalBlock {
 }
 
 /* ===================== Constants ===================== */
-const COMMAND_FILES = [
-  'system.json', 'acquisition.json', 'horizontal.json', 'channels.json',
-  'trigger.json', 'data.json', 'display.json', 'dpojet.json',
-  'measurement.json', 'math.json', 'cursor.json', 'save-recall.json',
-  'waveform.json', 'awg.json', 'mso_commands.json' // Detailed format with full manual data
-];
+// Legacy COMMAND_FILES removed - these files no longer exist
+// All commands now loaded from QUICK_LOAD_FILES which contain the complete command sets
+const COMMAND_FILES: string[] = [];
 
 // All command files - loaded on startup (prioritize MSO files first for full parsing)
 const QUICK_LOAD_FILES = [
@@ -1046,7 +1043,8 @@ function AppInner() {
   const [showManageInstruments, setShowManageInstruments] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_showSettingsDropdown, _setShowSettingsDropdown] = useState(false);
-  const [enableFlowDesigner, setEnableFlowDesigner] = useState(() => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_enableFlowDesigner, _setEnableFlowDesigner] = useState(() => {
     const saved = localStorage.getItem('enableFlowDesigner');
     return saved === 'true';
   });
@@ -1738,146 +1736,8 @@ function AppInner() {
         }));
         }
         
-        // STEP 2: Load detailed mso_commands.json (for enhanced data)
-        try {
-          const msoResponse = await fetch('/commands/mso_commands.json');
-          if (msoResponse.ok) {
-            const msoData: any = await msoResponse.json();
-            
-            if (msoData.categories && Array.isArray(msoData.categories)) {
-              // Load categories and colors
-              msoData.categories.forEach((cat: any) => {
-                colors[cat.id || cat.name] = cat.color;
-              });
-              
-              // Merge detailed command data into existing commands
-              msoData.commands.forEach((cmd: any) => {
-                const scpiCmd = cmd.scpi || cmd.header;
-                const normalized = normalizeCommandHeader(scpiCmd);
-                
-                // Find existing command or create new one
-                const existingIndex = commands.findIndex(c => 
-                  normalizeCommandHeader(c.scpi) === normalized
-                );
-                
-                const categoryInfo = msoData.categories.find((c: any) => (c.id || c.name) === cmd.category);
-                
-                // Parse SCPI structure
-                const parsed = scpiCmd ? parseSCPI(scpiCmd) : undefined;
-                const editableParams = parsed ? detectEditableParameters(parsed) : undefined;
-                
-                // Map params from new format (cmd.params) or old format (cmd.arguments)
-                const mapParams = (params: any[]): CommandParam[] => {
-                  if (!Array.isArray(params)) return [];
-                  const normalizeType = (t: string): CommandParam['type'] => {
-                    const type = (t || '').toLowerCase();
-                    if (['enumeration', 'enum', 'boolean', 'bool'].includes(type)) return 'enumeration';
-                    if (['number', 'numeric', 'integer', 'floating_point', 'nr1', 'nr2', 'nr3', 'float'].includes(type)) return 'number';
-                    return 'text';
-                  };
-                  return params.map((param: any) => {
-                    // New format: { name, type, required, default, options, description }
-                    if (param.name && param.type) {
-                      return {
-                        name: param.name,
-                        type: normalizeType(param.type),
-                        default: param.default,
-                        required: param.required || false,
-                        options: param.options || param.validValues?.values || param.validValues?.examples || [],
-                        description: param.description,
-                      };
-                    }
-                    // Old format: { name, type, defaultValue, required, validValues }
-                    return {
-                      name: param.name,
-                      type: normalizeType(param.type),
-                      default: param.defaultValue,
-                      required: param.required,
-                      options: param.validValues?.values || param.validValues?.examples || [],
-                      min: param.validValues?.min,
-                      max: param.validValues?.max,
-                      unit: param.validValues?.unit,
-                      description: param.description,
-                    };
-                  });
-                };
-                
-                const enhancedCommand: CommandLibraryItem = {
-                  name: cmd.name || cmd.shortDescription || cmd.id || scpiCmd,
-                  scpi: scpiCmd,
-                  description: cmd.description || cmd.shortDescription || '',
-                  category: categoryInfo?.name || cmd.category || 'miscellaneous',
-                  subcategory: cmd.subcategory,
-                  params: mapParams(cmd.params || cmd.arguments || []),
-                  example: cmd.codeExamples?.[0]?.codeExamples?.python?.code || cmd.codeExamples?.[0]?.codeExamples?.scpi?.code,
-                  tekhsi: false,
-                  sourceFile: (cmd as any).sourceFile || 'mso_commands.json', // Preserve source file from original command or use mso_commands.json
-                  scpiStructure: parsed,
-                  editableParameters: editableParams,
-                  manualReference: cmd.manualReference,
-                  manualEntry: cmd as any,
-                };
-                
-                if (existingIndex >= 0) {
-                  // Merge with existing command (enhance it)
-                  commands[existingIndex] = {
-                    ...commands[existingIndex],
-                    ...enhancedCommand,
-                    // Keep original description if enhanced one is empty
-                    description: enhancedCommand.description || commands[existingIndex].description,
-                    // Keep source file if it exists
-                    sourceFile: enhancedCommand.sourceFile || commands[existingIndex].sourceFile,
-                  };
-                } else {
-                  // New command, add it
-                  commands.push(enhancedCommand);
-                  loadedCommandIds.add(normalized);
-                }
-              });
-            }
-          }
-        } catch (err) {
-          console.error('Failed to load mso_commands.json:', err);
-        }
-        
-        // STEP 3: Load legacy command files, skipping duplicates
-        for (const file of COMMAND_FILES) {
-          // Skip files we've already processed
-          if (file === 'mso_commands.json') continue;
-          
-          try {
-            const response = await fetch(`/commands/${file}`);
-            if (!response.ok) continue;
-            const data: any = await response.json();
-            
-            // Old format: { category: "...", color: "...", commands: [...] }
-            if (!data.categories) {
-              colors[data.category] = data.color;
-              data.commands.forEach((cmd: any) => {
-                const cmdScpi = cmd.scpi || '';
-                const normalized = normalizeCommandHeader(cmdScpi);
-                
-                // Skip if already loaded from complete or detailed files
-                if (loadedCommandIds.has(normalized)) {
-                  return; // Skip duplicate
-                }
-                
-                commands.push({ 
-                  ...cmd, 
-                  category: data.category, 
-                  subcategory: data.subcategory,
-                  tekhsi: data.category === 'TekHSI',
-                  scpiStructure: cmd.scpi ? parseSCPI(cmd.scpi) : undefined,
-                  editableParameters: cmd.scpi ? detectEditableParameters(parseSCPI(cmd.scpi)) : undefined,
-                });
-                
-                loadedCommandIds.add(normalized);
-              });
-            }
-          } catch (err) {
-            console.error(`Failed to load command file ${file}:`, err);
-          }
-        }
+        // STEP 2: All commands now loaded from QUICK_LOAD_FILES above
+        // Legacy mso_commands.json and individual category files have been consolidated
         
         setCommandLibrary(commands);
         
@@ -4130,7 +3990,8 @@ if __name__ == "__main__":
     );
     
     // Detect TekHSI commands - must check recursively through groups
-    const hasTekHSICommands = (() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _hasTekHSICommands = (() => {
       const checkStep = (s: Step): boolean => {
         if (s.type === 'group' && s.children) {
           return s.children.some(checkStep);
@@ -12591,7 +12452,7 @@ Instructions:
       
       {/* tm_devices Help Modal */}
       {showTmDevicesHelp && tmDevicesHelpInfo && (() => {
-        const { code, path, method, model } = tmDevicesHelpInfo;
+        const { code, path, model } = tmDevicesHelpInfo;
         
         // Try to get docstring synchronously (if loaded)
         let docstring: any = null;

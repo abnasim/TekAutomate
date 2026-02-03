@@ -1,8 +1,8 @@
 @echo off
 color 0B
-title Tek Automator - Create Development Distribution
+title TekAutomate - Create Development Distribution
 echo ========================================================
-echo  Tek Automator - Create Development Distribution
+echo  TekAutomate - Create Development Distribution
 echo ========================================================
 echo.
 echo This creates a DEVELOPMENT MODE distribution where users
@@ -19,7 +19,7 @@ cd /d "%~dp0.."
 
 REM Get current folder name for ZIP file name
 for %%I in (.) do set FOLDERNAME=%%~nxI
-set ZIPNAME=%FOLDERNAME%_v1.0.zip
+set ZIPNAME=TekAutomate_v2.0.4.zip
 
 REM Remove old ZIP if exists
 if exist "%ZIPNAME%" (

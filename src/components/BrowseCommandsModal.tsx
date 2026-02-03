@@ -1,7 +1,7 @@
 /* ===================== Browse Commands Modal (Shared Component) ===================== */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, X, HelpCircle, ChevronDown, Copy } from 'lucide-react';
+import { Search, X, ChevronDown, Copy } from 'lucide-react';
 import { CommandDetailModal } from './CommandDetailModal';
 import { TriggerAnimation } from './TriggerMascot';
 import { parseSCPI } from '../utils/scpiParser';
@@ -347,7 +347,8 @@ export const BrowseCommandsModal: React.FC<BrowseCommandsModalProps> = ({
   
   if (!isOpen) return null;
 
-  const handleCommandClick = (cmd: CommandLibraryItem, e: React.MouseEvent) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleCommandClick = (cmd: CommandLibraryItem, e: React.MouseEvent) => {
     // Check if info icon was clicked
     const target = e.target as HTMLElement;
     if (target.closest('.info-icon') || target.closest('button[data-action="info"]')) {

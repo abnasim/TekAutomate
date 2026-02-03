@@ -4,7 +4,7 @@ import * as Blockly from 'blockly';
 import { pythonGenerator, Order } from 'blockly/python';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { DeviceEntry } from '../types';
-import { canPerformPSUOperation, getCommandPattern, getImplementationMethod, DeviceType } from '../utils/deviceCapabilities';
+import { canPerformPSUOperation, DeviceType } from '../utils/deviceCapabilities';
 import { convertSCPIToTmDevices } from '../../../utils/scpiToTmDevicesConverter';
 
 /**
@@ -29,8 +29,7 @@ function convertSCPIToTmDevicesPath(scpiCommand: string): {
     // Check if value is numeric
     const numericValue = parseFloat(formattedValue);
     if (!isNaN(numericValue) && formattedValue.match(/^-?\d*\.?\d+$/)) {
-      // Keep numeric values as-is
-      formattedValue = formattedValue;
+      // Keep numeric values as-is (no change needed)
     } else {
       // Quote string values
       formattedValue = `"${formattedValue}"`;
@@ -426,7 +425,8 @@ pythonGenerator.forBlock['connect_scope'] = function(block) {
 };
 
 pythonGenerator.forBlock['disconnect'] = function(block) {
-  const device = getDeviceVariable(block);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _device = getDeviceVariable(block);
   // Disconnect blocks should NOT remove from connectedDevices
   // Cleanup must close ALL devices that were opened, regardless of explicit disconnect blocks
   // This ensures symmetric cleanup: every connect -> exactly one close
@@ -1118,7 +1118,6 @@ pythonGenerator.forBlock['save_waveform'] = function(block) {
   
   // Determine if filename needs f-string interpolation
   const needsFString = filename.includes('{');
-  const filenameExpr = needsFString ? `f"${filename}"` : `"${filename}"`;
   
   // Extract variable names from filename for usage tracking
   if (needsFString) {

@@ -3,7 +3,7 @@
 import * as Blockly from 'blockly';
 import { parseSCPI } from '../../../utils/scpiParser';
 import { detectEditableParameters, replaceParameter } from '../../../utils/scpiParameterDetector';
-import { lookupCommand, getCommandParams, CommandParam } from '../utils/commandRegistry';
+import { lookupCommand, CommandParam } from '../utils/commandRegistry';
 
 // Color constants for better differentiation
 const WRITE_COLOR = 160;  // Green-teal for Write commands (sending data)

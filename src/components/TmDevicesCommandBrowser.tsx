@@ -1,7 +1,7 @@
 /* ===================== tm_devices Command Browser ===================== */
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Search, X, ChevronRight, Hash, Code2, AlertCircle, HelpCircle, BookOpen } from 'lucide-react';
+import { Search, X, ChevronRight, Hash, Code2, AlertCircle, BookOpen } from 'lucide-react';
 import { getDocstring, CommandDocstring } from './docstrings';
 
 // Path node types
@@ -219,7 +219,8 @@ export const TmDevicesCommandBrowser: React.FC<TmDevicesCommandBrowserProps> = (
 
   // Normalize indexed paths for lookup: ch[1] -> ch[x]
   // This is needed because JSON stores generic indexed nodes as [x], not concrete indices
-  const normalizeIndexedPath = useCallback((path: string): string => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _normalizeIndexedPath = useCallback((path: string): string => {
     return path.replace(/\[\d+\]/g, '[x]');
   }, []);
 
@@ -361,6 +362,7 @@ export const TmDevicesCommandBrowser: React.FC<TmDevicesCommandBrowserProps> = (
     }
     
     return { isFactory: false };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathStack, getCurrentTree]);
 
   /**
@@ -929,7 +931,8 @@ export const TmDevicesCommandBrowser: React.FC<TmDevicesCommandBrowserProps> = (
   };
 
   // Toggle node expansion (for UI visual feedback)
-  const toggleExpanded = (key: string) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _toggleExpanded = (key: string) => {
     const newSet = new Set(expandedNodes);
     if (newSet.has(key)) {
       newSet.delete(key);
@@ -1364,7 +1367,8 @@ export const TmDevicesCommandBrowser: React.FC<TmDevicesCommandBrowserProps> = (
                     if (docstring) {
                       const isQueryOnly = docstring.description?.toLowerCase().includes('query-only');
                       const isWriteMethod = selectedMethod === 'write';
-                      const isQueryMethod = selectedMethod === 'query';
+                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                      const _isQueryMethod = selectedMethod === 'query';
                       
                       // If description says "query-only" but method is write, try to find a better match
                       if (isQueryOnly && isWriteMethod) {

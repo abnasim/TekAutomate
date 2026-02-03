@@ -550,7 +550,8 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
       const device = getDeviceForBinding();
       const path = block.getFieldValue('PATH') || '';
       const value = block.getFieldValue('VALUE') || '';
-      const deviceName = currentDevice || 'scope';
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _deviceName = currentDevice || 'scope';
       const step: Step = {
         id,
         type: 'tm_device_command',

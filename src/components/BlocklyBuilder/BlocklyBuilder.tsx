@@ -12,7 +12,7 @@ import { createToolboxConfig } from './toolbox';
 import { convertStepsToBlocks } from './converters/stepToBlock';
 import { convertBlocksToSteps } from './converters/blockToStep';
 import { BlocklyBuilderProps } from './types';
-import { Download, Upload, FolderOpen, Trash2, ZoomIn, ZoomOut, ArrowLeft, Check, Sparkles, ClipboardPaste, Undo2, Redo2, Database } from 'lucide-react';
+import { Download, Upload, FolderOpen, Trash2, ArrowLeft, Check, Sparkles, ClipboardPaste, Undo2, Redo2, Database } from 'lucide-react';
 import { BrowseCommandsModal } from '../BrowseCommandsModal';
 import { PythonCodeEditor } from '../PythonCodeEditor';
 import { TmDevicesCommandBrowser } from '../TmDevicesCommandBrowser';
@@ -96,19 +96,22 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const [workspace, setWorkspace] = useState<Blockly.WorkspaceSvg | null>(null);
   const [hasUnsavedWork, setHasUnsavedWork] = useState(false);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_isInitialLoad, setIsInitialLoad] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showCommandExplorer, setShowCommandExplorer] = useState(false);
   const [showTmDevicesBrowser, setShowTmDevicesBrowser] = useState(false);
   const [showPythonEditorModal, setShowPythonEditorModal] = useState(false);
   const [pythonEditorBlockId, setPythonEditorBlockId] = useState<string | null>(null);
-  const [forceRenderKey, setForceRenderKey] = useState(0); // Force re-render trigger
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_forceRenderKey, setForceRenderKey] = useState(0); // Force re-render trigger
   const [blockCount, setBlockCount] = useState(0);
   const [aiPromptCopied, setAiPromptCopied] = useState(false);
   const [showAIPromptInput, setShowAIPromptInput] = useState(false);
   const [aiWorkflowDescription, setAiWorkflowDescription] = useState('');
   const [showAIPromptFallback, setShowAIPromptFallback] = useState(false);
-  const [aiGeneratedPrompt, setAiGeneratedPrompt] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_aiGeneratedPrompt, setAiGeneratedPrompt] = useState('');
   const [currentBlockForCommand, setCurrentBlockForCommand] = useState<{ blockId: string; fieldName: string; currentCommand?: string } | null>(null);
   const [currentTmDevicesBlock, setCurrentTmDevicesBlock] = useState<{ blockId: string; fieldName: string; currentPath?: string } | null>(null);
   const [commandBrowserDeviceFamily, setCommandBrowserDeviceFamily] = useState<string>('all');
@@ -1489,13 +1492,15 @@ Instructions:
     }
   };
 
-  // Handle zoom
-  const handleZoomIn = () => {
+  // Handle zoom (available for future UI buttons)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleZoomIn = () => {
     if (!workspace) return;
     workspace.zoomCenter(1.2);
   };
 
-  const handleZoomOut = () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _handleZoomOut = () => {
     if (!workspace) return;
     workspace.zoomCenter(0.8);
   };
