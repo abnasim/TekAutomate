@@ -2,6 +2,9 @@
 color 0B
 title TekAutomate - Build and Serve
 
+REM Suppress Node.js deprecation warnings
+set NODE_NO_WARNINGS=1
+
 echo ========================================================
 echo  TekAutomate - Production Build and Server
 echo ========================================================

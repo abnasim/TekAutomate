@@ -1,6 +1,10 @@
 @echo off
 color 0B
 title TekAutomate
+
+REM Suppress Node.js deprecation warnings
+set NODE_NO_WARNINGS=1
+
 echo ========================================================
 echo  TekAutomate
 echo ========================================================

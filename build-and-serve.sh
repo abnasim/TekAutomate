@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Suppress Node.js deprecation warnings
+export NODE_NO_WARNINGS=1
+
 echo "========================================================"
 echo "  TekAutomate - Production Build and Server"
 echo "========================================================"
