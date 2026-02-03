@@ -26,8 +26,13 @@ Open a terminal in the project folder and run the setup script:
 
 ### Step 3: Start the Application
 
+**Option A - Development Mode** (with hot reload):
 - **Windows:** Double-click `start.bat`
 - **macOS:** Run `./start.sh`
+
+**Option B - Production Mode** (faster, optimized):
+- **Windows:** Double-click `build-and-serve.bat`
+- **macOS:** Run `./build-and-serve.sh`
 
 The application will open in your browser at http://localhost:3000
 
