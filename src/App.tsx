@@ -189,9 +189,7 @@ interface SignalBlock {
 }
 
 /* ===================== Constants ===================== */
-// Legacy COMMAND_FILES removed - these files no longer exist
-// All commands now loaded from QUICK_LOAD_FILES which contain the complete command sets
-const COMMAND_FILES: string[] = [];
+// Legacy COMMAND_FILES removed - all commands now loaded from QUICK_LOAD_FILES
 
 // All command files - loaded on startup (prioritize MSO files first for full parsing)
 const QUICK_LOAD_FILES = [
@@ -1278,9 +1276,6 @@ function AppInner() {
             } else if (data.groups && typeof data.groups === 'object') {
               // Groups format (mso_commands_extracted_v2.json cleaned version)
               // Load commands from groups
-              let addedCount = 0;
-              let enhancedCount = 0;
-              
               Object.entries(data.groups).forEach(([groupName, groupData]: [string, any]) => {
                 if (!groupData || !Array.isArray(groupData.commands)) return;
                 
@@ -1535,17 +1530,12 @@ function AppInner() {
                       name: newName ? shortDesc : existing.name,
                       manualEntry: commandItem.manualEntry || existing.manualEntry,
                     };
-                    enhancedCount++;
                   } else {
                     commands.push(commandItem);
                     loadedCommandIds.add(normalized);
-                    addedCount++;
                   }
                 });
               });
-              
-              const totalCommands = Object.values(data.groups).reduce((sum: number, group: any) => 
-                sum + (Array.isArray(group.commands) ? group.commands.length : 0), 0);
               // Silently loaded - summary logged at end
             } else if (data.commands && Array.isArray(data.commands)) {
               // Enhanced format (mso_commands_final.json) or simple format (tekexpress.json, dpojet.json)
@@ -1564,9 +1554,6 @@ function AppInner() {
               }
               
               // Load commands - merge with existing or add new
-              let addedCount = 0;
-              let enhancedCount = 0;
-              
               data.commands.forEach((cmd: any) => {
                 const scpiCmd = cmd.scpi || cmd.header;
                 if (!scpiCmd) return;
@@ -1715,15 +1702,12 @@ function AppInner() {
                     // Merge manualEntry if it has more data
                     manualEntry: commandItem.manualEntry || commands[existingIndex].manualEntry,
                   };
-                  enhancedCount++;
                 } else {
                   // New command, add it
                   commands.push(commandItem);
                   loadedCommandIds.add(normalized);
-                  addedCount++;
                 }
               });
-              
               // Silently loaded - summary logged at end
             }
           } catch (err) {
