@@ -40,66 +40,67 @@ echo.
 echo Creating minimal distribution ZIP...
 echo.
 
-REM Use PowerShell to create ZIP
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ErrorActionPreference = 'Stop'; " ^
-    "$zipPath = Join-Path '%CD%' '%ZIPNAME%'; " ^
-    "try { " ^
-    "  Write-Host 'Adding files to ZIP...'; " ^
-    "  $tempZip = $zipPath + '.tmp'; " ^
-    "  if (Test-Path $tempZip) { Remove-Item $tempZip -Force }; " ^
-    "  Add-Type -AssemblyName System.IO.Compression.FileSystem; " ^
-    "  $zip = [System.IO.Compression.ZipFile]::Open($tempZip, 'Create'); " ^
-    "  " ^
-    "  # Add build folder " ^
-    "  $buildFiles = Get-ChildItem -Path 'build' -Recurse -File; " ^
-    "  foreach ($file in $buildFiles) { " ^
-    "    $relPath = 'build/' + $file.FullName.Substring((Get-Item 'build').FullName.Length + 1).Replace('\', '/'); " ^
-    "    $entry = $zip.CreateEntry($relPath); " ^
-    "    $entryStream = $entry.Open(); " ^
-    "    $fileStream = [System.IO.File]::OpenRead($file.FullName); " ^
-    "    $fileStream.CopyTo($entryStream); " ^
-    "    $fileStream.Close(); " ^
-    "    $entryStream.Close(); " ^
-    "  }; " ^
-    "  Write-Host \"  Added $($buildFiles.Count) files from build/\"; " ^
-    "  " ^
-    "  # Add serve scripts " ^
-    "  foreach ($script in @('serve-only.bat', 'serve-only.sh', 'README.md')) { " ^
-    "    if (Test-Path $script) { " ^
-    "      $entry = $zip.CreateEntry($script); " ^
-    "      $entryStream = $entry.Open(); " ^
-    "      $fileStream = [System.IO.File]::OpenRead($script); " ^
-    "      $fileStream.CopyTo($entryStream); " ^
-    "      $fileStream.Close(); " ^
-    "      $entryStream.Close(); " ^
-    "      Write-Host \"  Added $script\"; " ^
-    "    } " ^
-    "  }; " ^
-    "  " ^
-    "  $zip.Dispose(); " ^
-    "  Move-Item $tempZip $zipPath -Force; " ^
-    "  $sizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 2); " ^
-    "  Write-Host ''; " ^
-    "  Write-Host '========================================================'; " ^
-    "  Write-Host '  SUCCESS!'; " ^
-    "  Write-Host '========================================================'; " ^
-    "  Write-Host ''; " ^
-    "  Write-Host \"Created: $zipPath\"; " ^
-    "  Write-Host \"Size: $sizeMB MB\"; " ^
-    "  Write-Host ''; " ^
-    "  Write-Host 'This ZIP contains:'; " ^
-    "  Write-Host '  - build/ folder (pre-compiled app)'; " ^
-    "  Write-Host '  - serve-only.bat (Windows)'; " ^
-    "  Write-Host '  - serve-only.sh (macOS)'; " ^
-    "  Write-Host '  - README.md'; " ^
-    "  Write-Host ''; " ^
-    "  Write-Host 'Users just need Node.js installed, then run serve-only.bat'; " ^
-    "  exit 0 " ^
-    "} catch { " ^
-    "  Write-Host 'ERROR: ' $_.Exception.Message; " ^
-    "  exit 1 " ^
-    "}"
+REM Create a temporary PowerShell script
+echo $ErrorActionPreference = 'Stop' > "%TEMP%\create_zip.ps1"
+echo $rootPath = '%CD%' >> "%TEMP%\create_zip.ps1"
+echo $zipPath = Join-Path $rootPath '%ZIPNAME%' >> "%TEMP%\create_zip.ps1"
+echo. >> "%TEMP%\create_zip.ps1"
+echo try { >> "%TEMP%\create_zip.ps1"
+echo     Write-Host 'Adding files to ZIP...' >> "%TEMP%\create_zip.ps1"
+echo     $tempZip = $zipPath + '.tmp' >> "%TEMP%\create_zip.ps1"
+echo     if (Test-Path $tempZip) { Remove-Item $tempZip -Force } >> "%TEMP%\create_zip.ps1"
+echo     Add-Type -AssemblyName System.IO.Compression.FileSystem >> "%TEMP%\create_zip.ps1"
+echo     $zip = [System.IO.Compression.ZipFile]::Open($tempZip, 'Create') >> "%TEMP%\create_zip.ps1"
+echo. >> "%TEMP%\create_zip.ps1"
+echo     # Add build folder >> "%TEMP%\create_zip.ps1"
+echo     $buildPath = Join-Path $rootPath 'build' >> "%TEMP%\create_zip.ps1"
+echo     $buildFiles = Get-ChildItem -Path $buildPath -Recurse -File >> "%TEMP%\create_zip.ps1"
+echo     foreach ($file in $buildFiles) { >> "%TEMP%\create_zip.ps1"
+echo         $relPath = 'build/' + $file.FullName.Substring($buildPath.Length + 1).Replace('\', '/') >> "%TEMP%\create_zip.ps1"
+echo         $entry = $zip.CreateEntry($relPath) >> "%TEMP%\create_zip.ps1"
+echo         $entryStream = $entry.Open() >> "%TEMP%\create_zip.ps1"
+echo         $fileStream = [System.IO.File]::OpenRead($file.FullName) >> "%TEMP%\create_zip.ps1"
+echo         $fileStream.CopyTo($entryStream) >> "%TEMP%\create_zip.ps1"
+echo         $fileStream.Close() >> "%TEMP%\create_zip.ps1"
+echo         $entryStream.Close() >> "%TEMP%\create_zip.ps1"
+echo     } >> "%TEMP%\create_zip.ps1"
+echo     Write-Host "  Added $($buildFiles.Count) files from build/" >> "%TEMP%\create_zip.ps1"
+echo. >> "%TEMP%\create_zip.ps1"
+echo     # Add serve scripts and README >> "%TEMP%\create_zip.ps1"
+echo     $extraFiles = @('serve-only.bat', 'serve-only.sh', 'README.md') >> "%TEMP%\create_zip.ps1"
+echo     foreach ($script in $extraFiles) { >> "%TEMP%\create_zip.ps1"
+echo         $scriptPath = Join-Path $rootPath $script >> "%TEMP%\create_zip.ps1"
+echo         if (Test-Path $scriptPath) { >> "%TEMP%\create_zip.ps1"
+echo             $entry = $zip.CreateEntry($script) >> "%TEMP%\create_zip.ps1"
+echo             $entryStream = $entry.Open() >> "%TEMP%\create_zip.ps1"
+echo             $fileStream = [System.IO.File]::OpenRead($scriptPath) >> "%TEMP%\create_zip.ps1"
+echo             $fileStream.CopyTo($entryStream) >> "%TEMP%\create_zip.ps1"
+echo             $fileStream.Close() >> "%TEMP%\create_zip.ps1"
+echo             $entryStream.Close() >> "%TEMP%\create_zip.ps1"
+echo             Write-Host "  Added $script" >> "%TEMP%\create_zip.ps1"
+echo         } >> "%TEMP%\create_zip.ps1"
+echo     } >> "%TEMP%\create_zip.ps1"
+echo. >> "%TEMP%\create_zip.ps1"
+echo     $zip.Dispose() >> "%TEMP%\create_zip.ps1"
+echo     Move-Item $tempZip $zipPath -Force >> "%TEMP%\create_zip.ps1"
+echo     $sizeMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 2) >> "%TEMP%\create_zip.ps1"
+echo     Write-Host '' >> "%TEMP%\create_zip.ps1"
+echo     Write-Host '========================================================' >> "%TEMP%\create_zip.ps1"
+echo     Write-Host '  SUCCESS!' >> "%TEMP%\create_zip.ps1"
+echo     Write-Host '========================================================' >> "%TEMP%\create_zip.ps1"
+echo     Write-Host '' >> "%TEMP%\create_zip.ps1"
+echo     Write-Host "Created: $zipPath" >> "%TEMP%\create_zip.ps1"
+echo     Write-Host "Size: $sizeMB MB" >> "%TEMP%\create_zip.ps1"
+echo     Write-Host '' >> "%TEMP%\create_zip.ps1"
+echo     Write-Host 'Users just need Node.js installed, then run serve-only.bat' >> "%TEMP%\create_zip.ps1"
+echo     exit 0 >> "%TEMP%\create_zip.ps1"
+echo } catch { >> "%TEMP%\create_zip.ps1"
+echo     Write-Host "ERROR: $_" >> "%TEMP%\create_zip.ps1"
+echo     exit 1 >> "%TEMP%\create_zip.ps1"
+echo } >> "%TEMP%\create_zip.ps1"
+
+REM Run the PowerShell script
+powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\create_zip.ps1"
 
 if %ERRORLEVEL% EQU 0 (
     color 0A
@@ -110,5 +111,8 @@ if %ERRORLEVEL% EQU 0 (
     echo.
     echo Failed to create ZIP.
 )
+
+REM Cleanup
+del "%TEMP%\create_zip.ps1" 2>nul
 
 pause
