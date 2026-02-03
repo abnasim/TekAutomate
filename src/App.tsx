@@ -1219,7 +1219,14 @@ function AppInner() {
     }
   }, []);
 
+  // Track if data has been loaded to prevent double-loading in React StrictMode
+  const dataLoadedRef = useRef(false);
+  
   useEffect(() => {
+    // Prevent double-loading in React 18 StrictMode
+    if (dataLoadedRef.current) return;
+    dataLoadedRef.current = true;
+    
     const loadData = async () => {
       try {
         setLoading(true);
@@ -1267,15 +1274,7 @@ function AppInner() {
               // Merge colors
               Object.assign(colors, result.colors);
               
-              if (result.metadata) {
-                console.log(`Loaded ${result.commands.length} commands from ${file}`, {
-                  total: result.metadata.total_commands,
-                  sections: result.metadata.total_sections,
-                  equipment: result.metadata.equipment || result.metadata.source,
-                });
-              } else {
-                console.log(`Loaded ${result.commands.length} commands from ${file}`);
-              }
+              // Silently loaded - summary logged at end
             } else if (data.groups && typeof data.groups === 'object') {
               // Groups format (mso_commands_extracted_v2.json cleaned version)
               // Load commands from groups
@@ -1547,10 +1546,7 @@ function AppInner() {
               
               const totalCommands = Object.values(data.groups).reduce((sum: number, group: any) => 
                 sum + (Array.isArray(group.commands) ? group.commands.length : 0), 0);
-              console.log(`Loaded ${totalCommands} commands from ${file} (${addedCount} new, ${enhancedCount} enhanced)`, {
-                groups: Object.keys(data.groups).length,
-                metadata: data.metadata
-              });
+              // Silently loaded - summary logged at end
             } else if (data.commands && Array.isArray(data.commands)) {
               // Enhanced format (mso_commands_final.json) or simple format (tekexpress.json, dpojet.json)
               // Load categories and colors
@@ -1728,7 +1724,7 @@ function AppInner() {
                 }
               });
               
-              console.log(`Loaded ${data.commands.length} commands from ${file} (${addedCount} new, ${enhancedCount} enhanced)`);
+              // Silently loaded - summary logged at end
             }
           } catch (err) {
             console.error(`Failed to load complete command file ${file}:`, err);
@@ -1754,14 +1750,13 @@ function AppInner() {
               continue;
             }
             const data: TemplateFile = await response.json();
-            console.log(`Loaded template file ${file}:`, data);
             templates.push(...data.templates);
           } catch (err) {
             console.error(`Failed to load template file ${file}:`, err);
           }
         }
         setBuiltInTemplates(templates);
-        console.log(`Total templates loaded: ${templates.length}`);
+        console.log(`TekAutomate loaded: ${commands.length} commands, ${templates.length} templates`);
         setLoading(false);
         if (commands.length === 0) setLoadError('No commands loaded. Check public/commands and public/templates.');
       } catch (err) {
