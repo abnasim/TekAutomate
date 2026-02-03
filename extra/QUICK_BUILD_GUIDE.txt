@@ -1,0 +1,205 @@
+═══════════════════════════════════════════════════════════════════
+  TEK AUTOMATOR - QUICK BUILD GUIDE
+═══════════════════════════════════════════════════════════════════
+
+You have TWO distribution options:
+
+┌─────────────────────────────────────────────────────────────────┐
+│ OPTION A: Development Mode (~60-80 MB)                          │
+│ Users run setup.bat, then start.bat                             │
+│ Command: scripts\CREATE_DISTRIBUTION.bat                        │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ OPTION B: Production Build (~5-15 MB) ⭐ RECOMMENDED             │
+│ Users just run SERVE.bat - faster, optimized!                   │
+│ Command: scripts\CREATE_PRODUCTION_BUILD.bat                    │
+└─────────────────────────────────────────────────────────────────┘
+
+RECOMMENDATION: Use OPTION B for final deployment!
+
+Ready to create your distribution build? Follow these steps:
+
+───────────────────────────────────────────────────────────────────
+ STEP 1: PRE-FLIGHT CHECK
+───────────────────────────────────────────────────────────────────
+
+1. Test the app works locally:
+   
+   > start.bat
+   
+   - Verify app launches in browser
+   - Test basic functionality (load commands, export Python)
+
+2. Make sure dependencies are current:
+   
+   > npm install
+   
+   - Updates package-lock.json if needed
+
+───────────────────────────────────────────────────────────────────
+ STEP 2A: CREATE DEVELOPMENT DISTRIBUTION
+───────────────────────────────────────────────────────────────────
+
+For development mode (users run npm start):
+
+   > scripts\CREATE_DISTRIBUTION.bat
+
+This will create: Tek_Automator_v1.0.zip (~65-70 MB)
+
+What it includes:
+  ✓ All source code
+  ✓ All command JSONs (~58 MB - 4000+ commands, 50k+ tm_devices)
+  ✓ All templates
+  ✓ All documentation
+  ✓ Setup & start batch files
+  ✓ Examples folder
+
+What it excludes:
+  ✗ node_modules (800 MB - users install via setup.bat)
+  ✗ logs folder
+  ✗ build folder
+  ✗ .git folder
+
+Users must: Extract → setup.bat → start.bat
+
+───────────────────────────────────────────────────────────────────
+ STEP 2B: CREATE PRODUCTION BUILD ⭐ RECOMMENDED
+───────────────────────────────────────────────────────────────────
+
+For production mode (pre-built, optimized):
+
+   > scripts\CREATE_PRODUCTION_BUILD.bat
+
+This will:
+  1. Run 'npm run build' to create optimized production build
+  2. Create: Tek_Automator_Production_v1.0.zip (~5-15 MB)
+
+What it includes:
+  ✓ Optimized build/ folder (minified, production-ready)
+  ✓ SERVE.bat (startup script)
+  ✓ Documentation
+
+What it excludes:
+  ✗ Source code (src/) - not needed
+  ✗ node_modules - pre-built!
+  ✗ Development files
+
+Users must: Extract → SERVE.bat (that's it!)
+
+Benefits:
+  ✓ 5-15 MB (vs 65-70 MB!)
+  ✓ Faster performance
+  ✓ No npm install needed
+  ✓ Production-ready
+
+───────────────────────────────────────────────────────────────────
+ STEP 3: VERIFY DISTRIBUTION
+───────────────────────────────────────────────────────────────────
+
+For Development Distribution (Option A):
+
+   > scripts\VERIFY_ZIP.bat
+
+This checks:
+  ✓ setup.bat is included
+  ✓ start.bat is included
+  ✓ package.json is included
+  ✓ All command JSON files are included
+  ✓ All template files are included
+  ✓ Source files are included
+
+For Production Build (Option B):
+
+   Just verify the ZIP file exists and is ~5-15 MB.
+   Extract and test SERVE.bat works.
+
+───────────────────────────────────────────────────────────────────
+ STEP 4: TEST ON CLEAN SYSTEM (CRITICAL!)
+───────────────────────────────────────────────────────────────────
+
+For Development Distribution (Option A):
+
+1. Extract Tek_Automator_v1.0.zip to a folder
+2. Run setup.bat
+   - Should detect or install Node.js
+   - Should install npm dependencies
+   - Should complete with success message
+3. Run start.bat
+   - Should launch app in browser
+   - Should load without errors
+4. Test basic functionality
+   - Commands load correctly
+   - Python export works
+   - Templates load
+
+For Production Build (Option B):
+
+1. Extract Tek_Automator_Production_v1.0.zip to a folder
+2. Run SERVE.bat
+   - Should install 'serve' package if needed
+   - Should launch app in browser at http://localhost:3000
+   - Should load without errors
+3. Test basic functionality
+   - Commands load correctly
+   - Python export works
+   - Templates load
+
+───────────────────────────────────────────────────────────────────
+ STEP 5: DISTRIBUTE
+───────────────────────────────────────────────────────────────────
+
+Your ZIP is ready! Share it with your team.
+
+Development Mode - Users need to:
+1. Extract ZIP
+2. Run setup.bat (one time)
+3. Run start.bat (to launch)
+
+Production Build - Users need to: ⭐ SIMPLER!
+1. Extract ZIP
+2. Run SERVE.bat (that's it!)
+
+───────────────────────────────────────────────────────────────────
+ TROUBLESHOOTING
+───────────────────────────────────────────────────────────────────
+
+Problem: ZIP is 200MB+ instead of 65-70MB
+Solution: node_modules got included. Re-run CREATE_DISTRIBUTION.bat
+
+Problem: ZIP is only 5-10MB
+Solution: Command JSONs didn't get included. Check public/commands/
+
+Problem: Users can't install
+Solution: Make sure package.json and package-lock.json are in ZIP
+
+Problem: Command browser is empty
+Solution: Verify all JSON files in public/commands/ are in ZIP
+
+───────────────────────────────────────────────────────────────────
+ FILE SIZE REFERENCE
+───────────────────────────────────────────────────────────────────
+
+Development Mode (Option A):
+  ✓ Tek_Automator_v1.0.zip: 65-70 MB
+  ✓ Includes command JSONs: ~58 MB
+  ✓ Includes source code: ~5-10 MB
+  ✗ With node_modules: 200MB+ (WRONG! Re-create)
+
+Production Build (Option B): ⭐ MUCH SMALLER
+  ✓ Tek_Automator_Production_v1.0.zip: 5-15 MB
+  ✓ Pre-built, optimized, minified
+  ✓ No source code needed
+  ✗ If 60MB+, something went wrong
+
+───────────────────────────────────────────────────────────────────
+ THAT'S IT!
+───────────────────────────────────────────────────────────────────
+
+See DISTRIBUTION_CHECKLIST.md for more details.
+See BUILD_SUMMARY.md for complete project overview.
+
+Version: 1.0.0
+Date: January 26, 2026
+
+═══════════════════════════════════════════════════════════════════
