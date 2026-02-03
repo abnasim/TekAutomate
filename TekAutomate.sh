@@ -25,6 +25,19 @@ if [ ! -f "build/index.html" ]; then
     exit 1
 fi
 
+# Check if port 3000 is in use
+if lsof -i:3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "WARNING: Port 3000 is already in use!"
+    echo ""
+    echo "Either:"
+    echo "  1. Close the other application using port 3000"
+    echo "  2. Or the app is already running at http://localhost:3000"
+    echo ""
+    echo "Opening browser..."
+    open http://localhost:3000 2>/dev/null || xdg-open http://localhost:3000 2>/dev/null
+    exit 0
+fi
+
 echo "Starting server..."
 echo ""
 echo "The application will be available at:"
@@ -35,4 +48,5 @@ echo "Press Ctrl+C to stop the server"
 echo "========================================================"
 echo ""
 
-npx serve build -l 3000
+# Use --single for SPA routing, force port 3000 (will fail if taken)
+npx serve build -l 3000 --single --no-port-switching

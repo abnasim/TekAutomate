@@ -1212,6 +1212,12 @@ function AppInner() {
   // Check if welcome wizard should be shown on first launch
   useEffect(() => {
     const hasSeenWizard = localStorage.getItem('tekautomate_wizard_shown');
+    // Debug: log localStorage state
+    console.log('TekAutomate localStorage check:', {
+      hasSeenWizard,
+      origin: window.location.origin,
+      allKeys: Object.keys(localStorage).filter(k => k.startsWith('tekautomate'))
+    });
     if (!hasSeenWizard) {
       setShowWelcomeWizard(true);
     }
