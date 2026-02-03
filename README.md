@@ -8,33 +8,55 @@ Visual programming tool for automating Tektronix test equipment.
 
 ---
 
-## Installation
+## Quick Start (Prebuilt Distribution)
+
+If you have the prebuilt ZIP (`TekAutomate_v2.0.4_prebuilt.zip`):
 
 ### Step 1: Install Node.js
 
-Download and install Node.js for your operating system:
+- **Windows:** [node-v24.13.0-x64.msi](https://nodejs.org/dist/v24.13.0/node-v24.13.0-x64.msi)
+- **macOS:** [node-v24.13.0.pkg](https://nodejs.org/dist/v24.13.0/node-v24.13.0.pkg)
+
+### Step 2: Extract and Run
+
+- **Windows:** Double-click `TekAutomate.bat`
+- **macOS:** Run `./TekAutomate.sh`
+
+### Step 3: Open Browser
+
+Go to http://localhost:3000
+
+---
+
+## Developer Installation (Source Distribution)
+
+If you have the full source code:
+
+### Step 1: Install Node.js
 
 - **Windows:** [node-v24.13.0-x64.msi](https://nodejs.org/dist/v24.13.0/node-v24.13.0-x64.msi)
 - **macOS:** [node-v24.13.0.pkg](https://nodejs.org/dist/v24.13.0/node-v24.13.0.pkg)
 
 ### Step 2: Run Setup
 
-Open a terminal in the project folder and run the setup script:
-
-- **Windows:** Double-click `setup.bat` or run it from Command Prompt
-- **macOS:** Open Terminal and run `./setup.sh`
+- **Windows:** Double-click `setup.bat`
+- **macOS:** Run `./setup.sh`
 
 ### Step 3: Start the Application
 
-**Option A - Development Mode** (with hot reload):
+**Development Mode** (with hot reload):
 - **Windows:** Double-click `start.bat`
 - **macOS:** Run `./start.sh`
 
-**Option B - Production Mode** (faster, optimized):
-- **Windows:** Double-click `TekAutomate.bat`
-- **macOS:** Run `./TekAutomate.sh`
+**Production Mode** (faster):
+- **Windows:** Double-click `build-and-serve.bat`
+- **macOS:** Run `./build-and-serve.sh`
 
-The application will open in your browser at http://localhost:3000
+---
+
+## Examples
+
+Sample workflows are included in the `examples/` folder.
 
 ---
 
