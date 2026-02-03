@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optimized Bouncing Circles Animation for Loading Screen */
+@keyframes bounce-smooth {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-20px);
+    opacity: 0.8;
+  }
+}
+
+/* Trigger Mascot Fly-In Animation - Simple Smooth Approach */
+@keyframes triggerFlyIn {
+  0% {
+    /* Start off-screen top-left, small */
+    top: -100px;
+    left: -100px;
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  20% {
+    /* Enter screen smoothly */
+    top: 10%;
+    left: 10%;
+    transform: scale(0.5);
+    opacity: 0.7;
+  }
+  40% {
+    /* Smooth arc across screen */
+    top: 30%;
+    left: 40%;
+    transform: scale(0.7);
+    opacity: 1;
+  }
+  60% {
+    /* Continue smooth approach */
+    top: 50%;
+    left: 65%;
+    transform: scale(0.85);
+    opacity: 1;
+  }
+  80% {
+    /* Smoothly approach final position - still using top/left */
+    top: 75%;
+    left: 85%;
+    transform: scale(0.95);
+    opacity: 1;
+  }
+  83% {
+    /* Reach final position smoothly */
+    bottom: 120px;
+    right: 185px;
+    top: auto;
+    left: auto;
+    transform: scale(0.97);
+    opacity: 1;
+  }
+  90% {
+    /* Hover slightly above landing position */
+    bottom: 125px;
+    right: 185px;
+    transform: scale(0.98);
+    opacity: 1;
+  }
+  100% {
+    /* Land at final position */
+    bottom: 120px;
+    right: 185px;
+    transform: scale(1);
+    opacity: 1;
+  }
+}/* Shimmer animation for progress bar */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}.animate-shimmer {
+  animation: shimmer 2s infinite;
+}

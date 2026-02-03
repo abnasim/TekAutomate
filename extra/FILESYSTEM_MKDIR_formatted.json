@@ -1,0 +1,105 @@
+{
+  "scpi": "FILESystem:MKDir",
+  "description": "This command (no query form) creates a new directory.",
+  "conditions": null,
+  "group": "File System",
+  "syntax": [
+    "FILESystem:MKDir \"<directory_path>\""
+  ],
+  "relatedCommands": [
+    "FILESystem:CWD"
+  ],
+  "arguments": "<directory_path> is a quoted string that specifies the directory path to create.",
+  "examples": [
+    {
+      "scpi": "FILESYSTEM:MKDIR \"E:\\NewDirectory\"",
+      "description": "creates the directory named NewDirectory at the root of the E drive."
+    },
+    {
+      "scpi": "FILESYSTEM:CWD \"E:/MyDirectory\"; FILESYSTEM:MKDIR \"MyNewSubDirectory\"",
+      "description": "creates the directory MyNewSubDirectory within the existing directory MyDirectory at the root of the E drive."
+    },
+    {
+      "scpi": "FILESYSTEM:MKDIR \"C:\\Tekscope\\Screenshots\"",
+      "description": "creates a new directory named Screenshots in the Tekscope folder on the C drive."
+    }
+  ],
+  "returns": null,
+  "shortDescription": "This command (no query form) creates a new directory.",
+  "notes": [
+    "No query form available for this command",
+    "Directory path must be a quoted string",
+    "Use forward slashes (/) or escaped backslashes (\\\\) in paths",
+    "Use FILESYSTEM:CWD to change working directory before creating subdirectories"
+  ],
+  "name": "Mkdir",
+  "params": [
+    {
+      "name": "directory_path",
+      "type": "string",
+      "required": true,
+      "description": "Quoted string that specifies the directory path to create. Can be an absolute path (e.g., \"E:\\NewDirectory\") or a relative path (e.g., \"MyNewSubDirectory\") if used with FILESYSTEM:CWD."
+    }
+  ],
+  "example": "FILESYSTEM:MKDIR \"E:\\NewDirectory\"",
+  "_manualEntry": {
+    "command": "FILESystem:MKDir",
+    "header": "FILESystem:MKDir",
+    "mnemonics": [
+      "FILESystem",
+      "MKDir"
+    ],
+    "commandType": "set",
+    "description": "This command (no query form) creates a new directory.",
+    "shortDescription": "This command (no query form) creates a new directory.",
+    "arguments": [
+      {
+        "name": "directory_path",
+        "type": "quoted_string",
+        "required": true,
+        "description": "Quoted string that specifies the directory path to create."
+      }
+    ],
+    "examples": [
+      {
+        "description": "creates the directory named NewDirectory at the root of the E drive.",
+        "codeExamples": {
+          "scpi": {
+            "code": "FILESYSTEM:MKDIR \"E:\\NewDirectory\""
+          }
+        }
+      },
+      {
+        "description": "creates the directory MyNewSubDirectory within the existing directory MyDirectory at the root of the E drive.",
+        "codeExamples": {
+          "scpi": {
+            "code": "FILESYSTEM:CWD \"E:/MyDirectory\"; FILESYSTEM:MKDIR \"MyNewSubDirectory\""
+          }
+        }
+      }
+    ],
+    "relatedCommands": [
+      "FILESystem:CWD"
+    ],
+    "commandGroup": "File System",
+    "syntax": {
+      "set": "FILESystem:MKDir \"<directory_path>\""
+    },
+    "manualReference": {
+      "section": "File System"
+    },
+    "notes": [
+      "No query form available for this command",
+      "Directory path must be a quoted string"
+    ]
+  }
+}
+
+
+
+
+
+
+
+
+

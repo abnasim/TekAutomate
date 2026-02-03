@@ -1,0 +1,147 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables>
+    <variable id="var_i_001">i</variable>
+    <variable id="var_voltage_001">voltage</variable>
+  </variables>
+  <block type="connect_scope" id="connect_scope_1" x="20" y="20">
+    <mutation show_advanced="false" current_backend="pyvisa" current_dev_type="SCOPE" current_conn_type="INSTR"></mutation>
+    <field name="DEVICE_NAME">scope</field>
+    <field name="BACKEND">pyvisa</field>
+    <data>deviceName</data>
+    <next>
+      <block type="connect_scope" id="connect_scope_2">
+        <mutation show_advanced="false" current_backend="pyvisa" current_dev_type="SCOPE" current_conn_type="INSTR"></mutation>
+        <field name="DEVICE_NAME">psu</field>
+        <field name="BACKEND">pyvisa</field>
+        <data>deviceName</data>
+        <next>
+          <block type="set_device_context" id="use_scope_1">
+            <mutation device="scope"></mutation>
+            <field name="DEVICE">scope</field>
+            <next>
+              <block type="scpi_write" id="scope_cfg_1">
+                <field name="DEVICE_CONTEXT">(scope)</field>
+                <field name="COMMAND">CH1:SCAle 1.0</field>
+                <next>
+                  <block type="scpi_write" id="scope_cfg_2">
+                    <field name="DEVICE_CONTEXT">(scope)</field>
+                    <field name="COMMAND">CH2:SCAle 0.5</field>
+                    <next>
+                      <block type="scpi_write" id="scope_cfg_3">
+                        <field name="DEVICE_CONTEXT">(scope)</field>
+                        <field name="COMMAND">HORizontal:SCAle 1E-6</field>
+                        <next>
+                          <block type="scpi_write" id="scope_cfg_4">
+                            <field name="DEVICE_CONTEXT">(scope)</field>
+                            <field name="COMMAND">ACQuire:MODe SAMple</field>
+                            <next>
+                              <block type="controls_for" id="loop_1">
+                                <field name="VAR" id="var_i_001">i</field>
+                                <value name="FROM">
+                                  <shadow type="math_number" id="num_from_1">
+                                    <field name="NUM">0</field>
+                                  </shadow>
+                                </value>
+                                <value name="TO">
+                                  <shadow type="math_number" id="num_to_1">
+                                    <field name="NUM">4</field>
+                                  </shadow>
+                                </value>
+                                <value name="BY">
+                                  <shadow type="math_number" id="num_by_1">
+                                    <field name="NUM">1</field>
+                                  </shadow>
+                                </value>
+                                <statement name="DO">
+                                  <block type="variables_set" id="set_voltage_1">
+                                    <field name="VAR" id="var_voltage_001">voltage</field>
+                                    <value name="VALUE">
+                                      <block type="math_arithmetic" id="math_add_1">
+                                        <field name="OP">ADD</field>
+                                        <value name="A">
+                                          <shadow type="math_number" id="num_one_1">
+                                            <field name="NUM">1</field>
+                                          </shadow>
+                                        </value>
+                                        <value name="B">
+                                          <block type="math_arithmetic" id="math_mul_1">
+                                            <field name="OP">MULTIPLY</field>
+                                            <value name="A">
+                                              <block type="variables_get" id="get_i_1">
+                                                <field name="VAR" id="var_i_001">i</field>
+                                              </block>
+                                            </value>
+                                            <value name="B">
+                                              <shadow type="math_number" id="num_half_1">
+                                                <field name="NUM">0.5</field>
+                                              </shadow>
+                                            </value>
+                                          </block>
+                                        </value>
+                                      </block>
+                                    </value>
+                                    <next>
+                                      <block type="set_device_context" id="use_psu_1">
+                                        <mutation device="psu"></mutation>
+                                        <field name="DEVICE">psu</field>
+                                        <next>
+                                          <block type="scpi_write" id="psu_set_1">
+                                            <field name="DEVICE_CONTEXT">(psu)</field>
+                                            <field name="COMMAND">VOLTage {voltage}</field>
+                                            <next>
+                                              <block type="wait_seconds" id="wait_1">
+                                                <field name="SECONDS">0.5</field>
+                                                <next>
+                                                  <block type="set_device_context" id="use_scope_2">
+                                                    <mutation device="scope"></mutation>
+                                                    <field name="DEVICE">scope</field>
+                                                    <next>
+                                                      <block type="scpi_write" id="scope_acq_on_1">
+                                                        <field name="DEVICE_CONTEXT">(scope)</field>
+                                                        <field name="COMMAND">ACQuire:STATE ON</field>
+                                                        <next>
+                                                          <block type="wait_for_opc" id="opc_1">
+                                                            <field name="DEVICE_CONTEXT">(scope)</field>
+                                                            <field name="TIMEOUT">5</field>
+                                                            <next>
+                                                              <block type="save_waveform" id="save_1">
+                                                                <mutation show_advanced="false"></mutation>
+                                                                <field name="DEVICE_CONTEXT">(scope)</field>
+                                                                <field name="SOURCE">CH1</field>
+                                                                <field name="FILENAME">capture_{i}.wfm</field>
+                                                                <field name="FORMAT">CSV</field>
+                                                              </block>
+                                                            </next>
+                                                          </block>
+                                                        </next>
+                                                      </block>
+                                                    </next>
+                                                  </block>
+                                                </next>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </statement>
+                                <next>
+                                  <block type="disconnect" id="disconnect_1"></block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

@@ -1,0 +1,77 @@
+{
+  "category": "Basic",
+  "templates": [
+    {
+      "name": "Hello Scope",
+      "description": "Simple connect and identify",
+      "backend": "pyvisa",
+      "steps": [
+        { "id": "1", "type": "connect", "label": "Connect", "params": {} },
+        { "id": "2", "type": "query", "label": "Query IDN", "params": { "command": "*IDN?", "saveAs": "idn" } },
+        { "id": "3", "type": "query", "label": "Query Options", "params": { "command": "*OPT?", "saveAs": "options" } },
+        { "id": "4", "type": "disconnect", "label": "Disconnect", "params": {} }
+      ]
+    },
+    {
+      "name": "Single Waveform Capture",
+      "description": "Basic waveform acquisition from CH1",
+      "backend": "pyvisa",
+      "steps": [
+        { "id": "1", "type": "connect", "label": "Connect", "params": {} },
+        { "id": "2", "type": "write", "label": "Stop Acquisition", "params": { "command": "ACQuire:STATE OFF" } },
+        { "id": "3", "type": "write", "label": "Set Manual Mode", "params": { "command": "HORizontal:MODE MANUAL" } },
+        { "id": "4", "type": "write", "label": "Set Record Length", "params": { "command": "HORizontal:RECOrdlength 1000000" } },
+        { "id": "5", "type": "sleep", "label": "Wait", "params": { "duration": 0.2 } },
+        { "id": "6", "type": "write", "label": "Configure Data Transfer", "params": { "command": "DATA:SOURCE CH1;:DATA:ENCDG RIBINARY;:DATA:WIDTH 1" } },
+        { "id": "7", "type": "write", "label": "Start Acquisition", "params": { "command": "ACQuire:STATE ON" } },
+        { "id": "8", "type": "sleep", "label": "Wait for Trigger", "params": { "duration": 0.1 } },
+        { "id": "9", "type": "write", "label": "Stop Acquisition", "params": { "command": "ACQuire:STATE OFF" } },
+        { "id": "10", "type": "query", "label": "Wait Complete", "params": { "command": "*OPC?", "saveAs": "_" } },
+        { "id": "11", "type": "save_waveform", "label": "Save Waveform", "params": { "command": "CURVE?", "filename": "waveform.bin" } },
+        { "id": "12", "type": "disconnect", "label": "Disconnect", "params": {} }
+      ]
+    },
+    {
+      "name": "Screen Capture PNG (Legacy 5k/7k/70k)",
+      "description": "Screenshot via HARDCOPY for MSO/DPO 5k, 7k, 70k series scopes",
+      "backend": "pyvisa",
+      "deviceType": "SCOPE",
+      "steps": [
+        { "id": "1", "type": "connect", "label": "Connect to Scope", "params": {} },
+        { "id": "2", "type": "python", "label": "Capture Screenshot (Legacy 5k/7k/70k)", "params": { 
+          "code": "import os\nimport pathlib\nimport time\nos.makedirs('./screenshots', exist_ok=True)\ntry:\n    scpi.write('FILESYSTEM:MKDIR \"C:/TekScope\"')\nexcept:\n    pass\ntry:\n    scpi.write('FILESYSTEM:MKDIR \"C:/TekScope/Temp\"')\nexcept:\n    pass\nscpi.write('HARDCOPY:PORT FILE')\nscpi.write('HARDCOPY:FORMAT PNG')\nscpi.write('HARDCOPY:FILENAME \"C:/TekScope/Temp/screenshot.png\"')\nscpi.write('HARDCOPY START')\ntime.sleep(1.0)\nold_timeout = scpi.timeout\nscpi.timeout = 30000\nscpi.write('FILESYSTEM:READFILE \"C:/TekScope/Temp/screenshot.png\"')\ndata = scpi.read_raw()\nscpi.timeout = old_timeout\npathlib.Path('./screenshots/screenshot.png').write_bytes(data)\nscpi.write('FILESYSTEM:DELETE \"C:/TekScope/Temp/screenshot.png\"')\nprint('Saved screenshot to ./screenshots/screenshot.png')" 
+        } },
+        { "id": "3", "type": "disconnect", "label": "Disconnect", "params": {} }
+      ]
+    },
+    {
+      "name": "Screen Capture PNG (Modern MSO5/6)",
+      "description": "Screenshot via SAVE:IMAGE for MSO5, MSO6, MSO5B, MSO6B series scopes",
+      "backend": "pyvisa",
+      "deviceType": "SCOPE",
+      "steps": [
+        { "id": "1", "type": "connect", "label": "Connect to Scope", "params": {} },
+        { "id": "2", "type": "python", "label": "Capture Screenshot (Modern MSO5/6)", "params": { 
+          "code": "import os\nimport pathlib\nimport time\nos.makedirs('./screenshots', exist_ok=True)\ntry:\n    scpi.write('FILESYSTEM:MKDIR \"C:/Temp\"')\nexcept:\n    pass\nscpi.write('SAVE:IMAGE:COMPOSITION NORMAL')\nscpi.write('SAVE:IMAGE \"C:/Temp/screenshot.png\"')\ntime.sleep(1.0)\nold_timeout = scpi.timeout\nscpi.timeout = 30000\nscpi.write('FILESYSTEM:READFILE \"C:/Temp/screenshot.png\"')\ndata = scpi.read_raw()\nscpi.timeout = old_timeout\npathlib.Path('./screenshots/screenshot.png').write_bytes(data)\nscpi.write('FILESYSTEM:DELETE \"C:/Temp/screenshot.png\"')\nprint('Saved screenshot to ./screenshots/screenshot.png')" 
+        } },
+        { "id": "3", "type": "disconnect", "label": "Disconnect", "params": {} }
+      ]
+    },
+    {
+      "name": "Setup Save & Recall",
+      "description": "Save and restore instrument configuration",
+      "backend": "pyvisa",
+      "steps": [
+        { "id": "1", "type": "connect", "label": "Connect", "params": {} },
+        { "id": "2", "type": "write", "label": "Configure CH1", "params": { "command": "CH1:SCAle 1.0" } },
+        { "id": "3", "type": "write", "label": "Set Timebase", "params": { "command": "HORizontal:SCAle 1e-6" } },
+        { "id": "4", "type": "write", "label": "Save Setup", "params": { "command": "SAVe:SETUp 'mysetup.set'" } },
+        { "id": "5", "type": "sleep", "label": "Wait", "params": { "duration": 0.5 } },
+        { "id": "6", "type": "write", "label": "Reset to Default", "params": { "command": "*RST" } },
+        { "id": "7", "type": "sleep", "label": "Wait", "params": { "duration": 1.0 } },
+        { "id": "8", "type": "write", "label": "Recall Setup", "params": { "command": "RECAll:SETUp 'mysetup.set'" } },
+        { "id": "9", "type": "disconnect", "label": "Disconnect", "params": {} }
+      ]
+    }
+  ]
+}

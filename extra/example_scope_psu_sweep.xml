@@ -1,0 +1,134 @@
+<xml xmlns="https://developers.google.com/blockly/xml">
+  <variables>
+    <variable>i</variable>
+    <variable>voltage</variable>
+  </variables>
+  
+  <!-- Connect to Scope -->
+  <block type="connect_scope" id="connect_scope_1" x="20" y="20">
+    <field name="DEVICE_NAME">scope</field>
+    <field name="IP">192.168.1.10</field>
+    <field name="BACKEND">PyVISA</field>
+    <next>
+      <!-- Setup Scope -->
+      <block type="scpi_write" id="setup_scope_1">
+        <field name="DEVICE_CONTEXT">(?)</field>
+        <field name="COMMAND">ACQUIRE:STATE OFF</field>
+        <next>
+          <block type="scpi_write" id="setup_scope_2">
+            <field name="DEVICE_CONTEXT">(?)</field>
+            <field name="COMMAND">ACQUIRE:STOPAFTER SEQUENCE</field>
+            <next>
+              <!-- Connect to PSU -->
+              <block type="connect_scope" id="connect_psu_1">
+                <field name="DEVICE_NAME">psu</field>
+                <field name="IP">192.168.1.15</field>
+                <field name="BACKEND">PyVISA</field>
+                <next>
+                  <!-- FOR LOOP with index variable 'i' -->
+                  <block type="controls_for" id="main_loop">
+                    <field name="VAR">i</field>
+                    <value name="FROM">
+                      <shadow type="math_number">
+                        <field name="NUM">0</field>
+                      </shadow>
+                    </value>
+                    <value name="TO">
+                      <shadow type="math_number">
+                        <field name="NUM">4</field>
+                      </shadow>
+                    </value>
+                    <value name="BY">
+                      <shadow type="math_number">
+                        <field name="NUM">1</field>
+                      </shadow>
+                    </value>
+                    <statement name="DO">
+                      <!-- Calculate voltage: 1.0 + (i * 0.5) -->
+                      <block type="variables_set" id="calc_voltage">
+                        <field name="VAR">voltage</field>
+                        <value name="VALUE">
+                          <block type="math_arithmetic">
+                            <field name="OP">ADD</field>
+                            <value name="A">
+                              <shadow type="math_number">
+                                <field name="NUM">1.0</field>
+                              </shadow>
+                            </value>
+                            <value name="B">
+                              <block type="math_arithmetic">
+                                <field name="OP">MULTIPLY</field>
+                                <value name="A">
+                                  <block type="variables_get">
+                                    <field name="VAR">i</field>
+                                  </block>
+                                </value>
+                                <value name="B">
+                                  <shadow type="math_number">
+                                    <field name="NUM">0.5</field>
+                                  </shadow>
+                                </value>
+                              </block>
+                            </value>
+                          </block>
+                        </value>
+                        <next>
+                          <!-- Python code to set voltage using variable -->
+                          <block type="python_code" id="set_voltage_code">
+                            <field name="CODE">psu.write(f'VOLT {voltage}')</field>
+                            <next>
+                              <!-- Wait for PSU to settle -->
+                              <block type="wait_seconds" id="wait_psu">
+                                <field name="SECONDS">0.5</field>
+                                <next>
+                                  <!-- Switch to scope -->
+                                  <block type="set_device_context" id="switch_to_scope">
+                                    <field name="DEVICE">scope</field>
+                                    <next>
+                                      <!-- Start acquisition -->
+                                      <block type="scpi_write" id="start_acq">
+                                        <field name="DEVICE_CONTEXT">(?)</field>
+                                        <field name="COMMAND">ACQUIRE:STATE ON</field>
+                                        <next>
+                                          <!-- Wait for acquisition -->
+                                          <block type="wait_for_opc" id="wait_acq">
+                                            <field name="TIMEOUT">5</field>
+                                            <next>
+                                              <!-- Save waveform with index in filename -->
+                                              <block type="python_code" id="save_wfm_code">
+                                                <field name="CODE">scope.write(f'SAVE:WAVEFORM CH1, "C:/Captures/capture_{i}.wfm"')</field>
+                                                <next>
+                                                  <!-- Wait between iterations -->
+                                                  <block type="wait_seconds" id="wait_loop">
+                                                    <field name="SECONDS">0.1</field>
+                                                  </block>
+                                                </next>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </statement>
+                    <next>
+                      <!-- Disconnect -->
+                      <block type="disconnect" id="disconnect_1">
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </next>
+  </block>
+</xml>

@@ -1,0 +1,83 @@
+/* Blockly Builder Custom Styles */
+
+/* Thin scrollbars for modern browsers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Firefox thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 transparent;
+}
+
+/* ONLY remove the scrollbar, keep the background */
+.blocklyFlyoutScrollbar {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Keep the flyout background for visibility, but ensure it hides properly */
+.blocklyFlyoutBackground {
+  opacity: 0.95 !important;
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* When flyout is hidden, hide the background too */
+.blocklyFlyout.blocklyHidden .blocklyFlyoutBackground {
+  display: none !important;
+  opacity: 0 !important;
+}
+
+/* Ensure flyout closes properly and doesn't stick around */
+.blocklyFlyout {
+  transition: transform 0.2s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+/* Hidden flyout should be completely invisible and non-interactive */
+.blocklyFlyout.blocklyHidden {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateX(-100%) !important;
+}
+
+/* Hide only the scrollbar elements, not the background */
+.blocklyFlyout .blocklyScrollbarVertical,
+.blocklyFlyout .blocklyScrollbarHorizontal {
+  display: none !important;
+}
+
+/* Ensure toolbox flyout is positioned correctly */
+.blocklyToolboxDiv {
+  z-index: 10;
+}
+
+/* Make sure workspace is interactive */
+.blocklyWorkspace {
+  z-index: 1;
+}
+
+/* Device context labels in blocks */
+.blocklyText[data-device-context] {
+  font-weight: 600;
+}
+
+/* Smooth color transitions for device context changes */
+.blocklyPath {
+  transition: fill 0.2s ease-in-out, stroke 0.2s ease-in-out;
+}

@@ -1,0 +1,590 @@
+{
+  "metadata": {
+    "name": "AWG Series",
+    "description": "Arbitrary Waveform Generator SCPI commands for AWG5000, AWG7000, AWG70000 series",
+    "instruments": ["AWG5000", "AWG7000", "AWG70001", "AWG70002", "AWG5200"],
+    "version": "1.0"
+  },
+  "groups": {
+    "Output": {
+      "description": "Output channel control commands",
+      "color": "bg-green-100 text-green-700",
+      "commands": [
+        {
+          "name": "Enable Output",
+          "scpi": "OUTPut{ch}:STATe ON",
+          "description": "Enable output channel",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true }
+          ],
+          "example": "awg.write('OUTPut1:STATe ON')"
+        },
+        {
+          "name": "Disable Output",
+          "scpi": "OUTPut{ch}:STATe OFF",
+          "description": "Disable output channel",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true }
+          ],
+          "example": "awg.write('OUTPut1:STATe OFF')"
+        },
+        {
+          "name": "Query Output State",
+          "scpi": "OUTPut{ch}:STATe?",
+          "description": "Query output channel state",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true }
+          ],
+          "example": "state = awg.query('OUTPut1:STATe?')"
+        },
+        {
+          "name": "Enable All Outputs",
+          "scpi": "AWGControl:RUN:IMMediate",
+          "description": "Enable all outputs immediately",
+          "example": "awg.write('AWGControl:RUN:IMMediate')"
+        },
+        {
+          "name": "Stop All Outputs",
+          "scpi": "AWGControl:STOP:IMMediate",
+          "description": "Stop all outputs immediately",
+          "example": "awg.write('AWGControl:STOP:IMMediate')"
+        },
+        {
+          "name": "Set Output Path",
+          "scpi": "OUTPut{ch}:PATH {path}",
+          "description": "Set output signal path",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "path", "type": "text", "default": "DIRect", "options": ["DIRect", "AC", "DCAmplified"], "required": true }
+          ],
+          "example": "awg.write('OUTPut1:PATH DIRect')"
+        },
+        {
+          "name": "Set Amplitude",
+          "scpi": "SOURce{ch}:VOLTage:LEVel:IMMediate:AMPLitude {amplitude}",
+          "description": "Set output amplitude",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "amplitude", "type": "number", "default": 0.5, "required": true, "unit": "Vpp" }
+          ],
+          "example": "awg.write('SOURce1:VOLTage:LEVel:IMMediate:AMPLitude 0.5')"
+        },
+        {
+          "name": "Query Amplitude",
+          "scpi": "SOURce{ch}:VOLTage:LEVel:IMMediate:AMPLitude?",
+          "description": "Query output amplitude",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true }
+          ],
+          "example": "amp = awg.query('SOURce1:VOLTage:LEVel:IMMediate:AMPLitude?')"
+        },
+        {
+          "name": "Set Offset",
+          "scpi": "SOURce{ch}:VOLTage:LEVel:IMMediate:OFFSet {offset}",
+          "description": "Set output DC offset",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "offset", "type": "number", "default": 0, "required": true, "unit": "V" }
+          ],
+          "example": "awg.write('SOURce1:VOLTage:LEVel:IMMediate:OFFSet 0')"
+        },
+        {
+          "name": "Set High Level",
+          "scpi": "SOURce{ch}:VOLTage:LEVel:IMMediate:HIGH {level}",
+          "description": "Set output high voltage level",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "level", "type": "number", "default": 0.5, "required": true, "unit": "V" }
+          ],
+          "example": "awg.write('SOURce1:VOLTage:LEVel:IMMediate:HIGH 0.5')"
+        },
+        {
+          "name": "Set Low Level",
+          "scpi": "SOURce{ch}:VOLTage:LEVel:IMMediate:LOW {level}",
+          "description": "Set output low voltage level",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "level", "type": "number", "default": 0, "required": true, "unit": "V" }
+          ],
+          "example": "awg.write('SOURce1:VOLTage:LEVel:IMMediate:LOW 0')"
+        }
+      ]
+    },
+    "Waveform": {
+      "description": "Waveform management commands",
+      "color": "bg-blue-100 text-blue-700",
+      "commands": [
+        {
+          "name": "List Waveforms",
+          "scpi": "WLISt:LIST?",
+          "description": "List all waveforms in memory",
+          "example": "waveforms = awg.query('WLISt:LIST?')"
+        },
+        {
+          "name": "Query Waveform Count",
+          "scpi": "WLISt:SIZE?",
+          "description": "Query number of waveforms in memory",
+          "example": "count = awg.query('WLISt:SIZE?')"
+        },
+        {
+          "name": "Create New Waveform",
+          "scpi": "WLISt:WAVeform:NEW \"{name}\",{length},{type}",
+          "description": "Create a new waveform in memory",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestWfm", "required": true },
+            { "name": "length", "type": "number", "default": 1000, "required": true },
+            { "name": "type", "type": "text", "default": "REAL", "options": ["REAL", "INTeger"], "required": true }
+          ],
+          "example": "awg.write('WLISt:WAVeform:NEW \"TestWfm\",1000,REAL')"
+        },
+        {
+          "name": "Delete Waveform",
+          "scpi": "WLISt:WAVeform:DELete \"{name}\"",
+          "description": "Delete a waveform from memory",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestWfm", "required": true }
+          ],
+          "example": "awg.write('WLISt:WAVeform:DELete \"TestWfm\"')"
+        },
+        {
+          "name": "Delete All Waveforms",
+          "scpi": "WLISt:WAVeform:DELete ALL",
+          "description": "Delete all waveforms from memory",
+          "example": "awg.write('WLISt:WAVeform:DELete ALL')"
+        },
+        {
+          "name": "Query Waveform Length",
+          "scpi": "WLISt:WAVeform:LENGth? \"{name}\"",
+          "description": "Query waveform length in samples",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestWfm", "required": true }
+          ],
+          "example": "length = awg.query('WLISt:WAVeform:LENGth? \"TestWfm\"')"
+        },
+        {
+          "name": "Set Waveform Data",
+          "scpi": "WLISt:WAVeform:DATA \"{name}\",{offset},{size},{data}",
+          "description": "Set waveform data",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestWfm", "required": true },
+            { "name": "offset", "type": "number", "default": 0, "required": true },
+            { "name": "size", "type": "number", "default": 1000, "required": true },
+            { "name": "data", "type": "text", "default": "", "required": true }
+          ],
+          "example": "awg.write_binary('WLISt:WAVeform:DATA \"TestWfm\",0,1000,', data)"
+        },
+        {
+          "name": "Query Waveform Data",
+          "scpi": "WLISt:WAVeform:DATA? \"{name}\",{offset},{size}",
+          "description": "Query waveform data",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestWfm", "required": true },
+            { "name": "offset", "type": "number", "default": 0, "required": true },
+            { "name": "size", "type": "number", "default": 1000, "required": true }
+          ],
+          "example": "data = awg.query_binary('WLISt:WAVeform:DATA? \"TestWfm\",0,1000')"
+        },
+        {
+          "name": "Assign Waveform to Channel",
+          "scpi": "SOURce{ch}:WAVeform \"{name}\"",
+          "description": "Assign a waveform to output channel",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "name", "type": "text", "default": "TestWfm", "required": true }
+          ],
+          "example": "awg.write('SOURce1:WAVeform \"TestWfm\"')"
+        },
+        {
+          "name": "Query Assigned Waveform",
+          "scpi": "SOURce{ch}:WAVeform?",
+          "description": "Query waveform assigned to channel",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true }
+          ],
+          "example": "wfm = awg.query('SOURce1:WAVeform?')"
+        },
+        {
+          "name": "Normalize Waveform",
+          "scpi": "WLISt:WAVeform:NORMalize \"{name}\",{type}",
+          "description": "Normalize waveform data",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestWfm", "required": true },
+            { "name": "type", "type": "text", "default": "FSCale", "options": ["FSCale", "ZREFerence"], "required": true }
+          ],
+          "example": "awg.write('WLISt:WAVeform:NORMalize \"TestWfm\",FSCale')"
+        }
+      ]
+    },
+    "Sampling": {
+      "description": "Sample rate and clock commands",
+      "color": "bg-purple-100 text-purple-700",
+      "commands": [
+        {
+          "name": "Set Sample Rate",
+          "scpi": "SOURce:FREQuency:CW {rate}",
+          "description": "Set sample rate in samples/second",
+          "params": [
+            { "name": "rate", "type": "number", "default": 25000000000, "required": true, "unit": "Sa/s" }
+          ],
+          "example": "awg.write('SOURce:FREQuency:CW 25E9')"
+        },
+        {
+          "name": "Query Sample Rate",
+          "scpi": "SOURce:FREQuency:CW?",
+          "description": "Query sample rate",
+          "example": "rate = awg.query('SOURce:FREQuency:CW?')"
+        },
+        {
+          "name": "Set Clock Source",
+          "scpi": "SOURce:ROSCillator:SOURce {source}",
+          "description": "Set reference oscillator source",
+          "params": [
+            { "name": "source", "type": "text", "default": "INTernal", "options": ["INTernal", "EXTernal", "EFIXed", "EVARiable"], "required": true }
+          ],
+          "example": "awg.write('SOURce:ROSCillator:SOURce INTernal')"
+        },
+        {
+          "name": "Query Clock Source",
+          "scpi": "SOURce:ROSCillator:SOURce?",
+          "description": "Query reference oscillator source",
+          "example": "source = awg.query('SOURce:ROSCillator:SOURce?')"
+        },
+        {
+          "name": "Set External Clock Frequency",
+          "scpi": "SOURce:ROSCillator:FREQuency {freq}",
+          "description": "Set external reference frequency",
+          "params": [
+            { "name": "freq", "type": "number", "default": 10000000, "required": true, "unit": "Hz" }
+          ],
+          "example": "awg.write('SOURce:ROSCillator:FREQuency 10E6')"
+        },
+        {
+          "name": "Set Clock Output State",
+          "scpi": "OUTPut:CLOCk:STATe {state}",
+          "description": "Enable/disable clock output",
+          "params": [
+            { "name": "state", "type": "text", "default": "ON", "options": ["ON", "OFF"], "required": true }
+          ],
+          "example": "awg.write('OUTPut:CLOCk:STATe ON')"
+        }
+      ]
+    },
+    "Sequence": {
+      "description": "Sequence and playlist commands",
+      "color": "bg-orange-100 text-orange-700",
+      "commands": [
+        {
+          "name": "Set Run Mode",
+          "scpi": "AWGControl:RMODe {mode}",
+          "description": "Set the run mode",
+          "params": [
+            { "name": "mode", "type": "text", "default": "CONTinuous", "options": ["CONTinuous", "TRIGgered", "GATed", "SEQuence"], "required": true }
+          ],
+          "example": "awg.write('AWGControl:RMODe SEQuence')"
+        },
+        {
+          "name": "Query Run Mode",
+          "scpi": "AWGControl:RMODe?",
+          "description": "Query current run mode",
+          "example": "mode = awg.query('AWGControl:RMODe?')"
+        },
+        {
+          "name": "List Sequences",
+          "scpi": "SLISt:LIST?",
+          "description": "List all sequences in memory",
+          "example": "sequences = awg.query('SLISt:LIST?')"
+        },
+        {
+          "name": "Query Sequence Count",
+          "scpi": "SLISt:SIZE?",
+          "description": "Query number of sequences",
+          "example": "count = awg.query('SLISt:SIZE?')"
+        },
+        {
+          "name": "Create Sequence",
+          "scpi": "SLISt:SEQuence:NEW \"{name}\",{steps},{tracks}",
+          "description": "Create a new sequence",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestSeq", "required": true },
+            { "name": "steps", "type": "number", "default": 1, "required": true },
+            { "name": "tracks", "type": "number", "default": 1, "required": true }
+          ],
+          "example": "awg.write('SLISt:SEQuence:NEW \"TestSeq\",10,1')"
+        },
+        {
+          "name": "Delete Sequence",
+          "scpi": "SLISt:SEQuence:DELete \"{name}\"",
+          "description": "Delete a sequence",
+          "params": [
+            { "name": "name", "type": "text", "default": "TestSeq", "required": true }
+          ],
+          "example": "awg.write('SLISt:SEQuence:DELete \"TestSeq\"')"
+        },
+        {
+          "name": "Set Sequence Step Waveform",
+          "scpi": "SLISt:SEQuence:STEP{step}:TASSet{track}:WAVeform \"{seq}\",\"{wfm}\"",
+          "description": "Set waveform for a sequence step",
+          "params": [
+            { "name": "step", "type": "number", "default": 1, "required": true },
+            { "name": "track", "type": "number", "default": 1, "required": true },
+            { "name": "seq", "type": "text", "default": "TestSeq", "required": true },
+            { "name": "wfm", "type": "text", "default": "TestWfm", "required": true }
+          ],
+          "example": "awg.write('SLISt:SEQuence:STEP1:TASSet1:WAVeform \"TestSeq\",\"TestWfm\"')"
+        },
+        {
+          "name": "Set Sequence Step Loop Count",
+          "scpi": "SLISt:SEQuence:STEP{step}:RCOunt \"{seq}\",{count}",
+          "description": "Set repeat count for sequence step",
+          "params": [
+            { "name": "step", "type": "number", "default": 1, "required": true },
+            { "name": "seq", "type": "text", "default": "TestSeq", "required": true },
+            { "name": "count", "type": "number", "default": 1, "required": true }
+          ],
+          "example": "awg.write('SLISt:SEQuence:STEP1:RCOunt \"TestSeq\",10')"
+        },
+        {
+          "name": "Set Sequence Step Goto",
+          "scpi": "SLISt:SEQuence:STEP{step}:GOTO \"{seq}\",{target}",
+          "description": "Set goto target for sequence step",
+          "params": [
+            { "name": "step", "type": "number", "default": 1, "required": true },
+            { "name": "seq", "type": "text", "default": "TestSeq", "required": true },
+            { "name": "target", "type": "text", "default": "NEXT", "options": ["NEXT", "FIRSt", "LAST", "END"], "required": true }
+          ],
+          "example": "awg.write('SLISt:SEQuence:STEP1:GOTO \"TestSeq\",NEXT')"
+        }
+      ]
+    },
+    "Marker": {
+      "description": "Marker output commands",
+      "color": "bg-pink-100 text-pink-700",
+      "commands": [
+        {
+          "name": "Set Marker State",
+          "scpi": "SOURce{ch}:MARKer{m}:STATe {state}",
+          "description": "Enable/disable marker output",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "m", "type": "number", "default": 1, "options": ["1", "2"], "required": true },
+            { "name": "state", "type": "text", "default": "ON", "options": ["ON", "OFF"], "required": true }
+          ],
+          "example": "awg.write('SOURce1:MARKer1:STATe ON')"
+        },
+        {
+          "name": "Set Marker Delay",
+          "scpi": "SOURce{ch}:MARKer{m}:DELay {delay}",
+          "description": "Set marker delay in seconds",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "m", "type": "number", "default": 1, "required": true },
+            { "name": "delay", "type": "number", "default": 0, "required": true, "unit": "s" }
+          ],
+          "example": "awg.write('SOURce1:MARKer1:DELay 1E-9')"
+        },
+        {
+          "name": "Set Marker High Level",
+          "scpi": "SOURce{ch}:MARKer{m}:VOLTage:LEVel:IMMediate:HIGH {level}",
+          "description": "Set marker high voltage level",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "m", "type": "number", "default": 1, "required": true },
+            { "name": "level", "type": "number", "default": 1.0, "required": true, "unit": "V" }
+          ],
+          "example": "awg.write('SOURce1:MARKer1:VOLTage:LEVel:IMMediate:HIGH 1.0')"
+        },
+        {
+          "name": "Set Marker Low Level",
+          "scpi": "SOURce{ch}:MARKer{m}:VOLTage:LEVel:IMMediate:LOW {level}",
+          "description": "Set marker low voltage level",
+          "params": [
+            { "name": "ch", "type": "number", "default": 1, "required": true },
+            { "name": "m", "type": "number", "default": 1, "required": true },
+            { "name": "level", "type": "number", "default": 0, "required": true, "unit": "V" }
+          ],
+          "example": "awg.write('SOURce1:MARKer1:VOLTage:LEVel:IMMediate:LOW 0')"
+        }
+      ]
+    },
+    "Trigger": {
+      "description": "Trigger control commands",
+      "color": "bg-red-100 text-red-700",
+      "commands": [
+        {
+          "name": "Set Trigger Source",
+          "scpi": "TRIGger:SOURce {source}",
+          "description": "Set trigger source",
+          "params": [
+            { "name": "source", "type": "text", "default": "INTernal", "options": ["INTernal", "EXTernal", "BUS"], "required": true }
+          ],
+          "example": "awg.write('TRIGger:SOURce EXTernal')"
+        },
+        {
+          "name": "Query Trigger Source",
+          "scpi": "TRIGger:SOURce?",
+          "description": "Query trigger source",
+          "example": "source = awg.query('TRIGger:SOURce?')"
+        },
+        {
+          "name": "Set Trigger Level",
+          "scpi": "TRIGger:LEVel {level}",
+          "description": "Set external trigger level",
+          "params": [
+            { "name": "level", "type": "number", "default": 1.4, "required": true, "unit": "V" }
+          ],
+          "example": "awg.write('TRIGger:LEVel 1.4')"
+        },
+        {
+          "name": "Set Trigger Slope",
+          "scpi": "TRIGger:SLOPe {slope}",
+          "description": "Set trigger slope",
+          "params": [
+            { "name": "slope", "type": "text", "default": "POSitive", "options": ["POSitive", "NEGative"], "required": true }
+          ],
+          "example": "awg.write('TRIGger:SLOPe POSitive')"
+        },
+        {
+          "name": "Set Trigger Impedance",
+          "scpi": "TRIGger:IMPedance {impedance}",
+          "description": "Set external trigger impedance",
+          "params": [
+            { "name": "impedance", "type": "text", "default": "50", "options": ["50", "1000"], "required": true }
+          ],
+          "example": "awg.write('TRIGger:IMPedance 50')"
+        },
+        {
+          "name": "Force Trigger",
+          "scpi": "*TRG",
+          "description": "Force an immediate trigger",
+          "example": "awg.write('*TRG')"
+        },
+        {
+          "name": "Set Wait for Trigger",
+          "scpi": "TRIGger:MODE {mode}",
+          "description": "Set trigger wait mode",
+          "params": [
+            { "name": "mode", "type": "text", "default": "TRIGgered", "options": ["TRIGgered", "SYNChronous", "ASYNchronous"], "required": true }
+          ],
+          "example": "awg.write('TRIGger:MODE TRIGgered')"
+        }
+      ]
+    },
+    "Event": {
+      "description": "Event output commands",
+      "color": "bg-indigo-100 text-indigo-700",
+      "commands": [
+        {
+          "name": "Set Event Output State",
+          "scpi": "EVENt:STATe {state}",
+          "description": "Enable/disable event output",
+          "params": [
+            { "name": "state", "type": "text", "default": "ON", "options": ["ON", "OFF"], "required": true }
+          ],
+          "example": "awg.write('EVENt:STATe ON')"
+        },
+        {
+          "name": "Set Event Jump Timing",
+          "scpi": "EVENt:JTIMing {timing}",
+          "description": "Set event jump timing",
+          "params": [
+            { "name": "timing", "type": "text", "default": "ASYNC", "options": ["ASYNC", "SYNC"], "required": true }
+          ],
+          "example": "awg.write('EVENt:JTIMing ASYNC')"
+        },
+        {
+          "name": "Force Event",
+          "scpi": "EVENt:IMMediate",
+          "description": "Force an immediate event",
+          "example": "awg.write('EVENt:IMMediate')"
+        }
+      ]
+    },
+    "System": {
+      "description": "System and common commands",
+      "color": "bg-gray-100 text-gray-700",
+      "commands": [
+        {
+          "name": "Identify",
+          "scpi": "*IDN?",
+          "description": "Query instrument identification",
+          "example": "idn = awg.query('*IDN?')"
+        },
+        {
+          "name": "Reset",
+          "scpi": "*RST",
+          "description": "Reset instrument to default settings",
+          "example": "awg.write('*RST')"
+        },
+        {
+          "name": "Clear Status",
+          "scpi": "*CLS",
+          "description": "Clear status registers",
+          "example": "awg.write('*CLS')"
+        },
+        {
+          "name": "Operation Complete Query",
+          "scpi": "*OPC?",
+          "description": "Query operation complete status",
+          "example": "opc = awg.query('*OPC?')"
+        },
+        {
+          "name": "Set Operation Complete",
+          "scpi": "*OPC",
+          "description": "Set OPC bit when operations complete",
+          "example": "awg.write('*OPC')"
+        },
+        {
+          "name": "Wait",
+          "scpi": "*WAI",
+          "description": "Wait for pending operations to complete",
+          "example": "awg.write('*WAI')"
+        },
+        {
+          "name": "Self Test",
+          "scpi": "*TST?",
+          "description": "Run self-test and query result",
+          "example": "result = awg.query('*TST?')"
+        },
+        {
+          "name": "Query Run State",
+          "scpi": "AWGControl:RSTate?",
+          "description": "Query AWG run state",
+          "example": "state = awg.query('AWGControl:RSTate?')"
+        },
+        {
+          "name": "Save Setup",
+          "scpi": "AWGControl:SSAVe \"{path}\"",
+          "description": "Save current setup to file",
+          "params": [
+            { "name": "path", "type": "text", "default": "C:\\\\Setup\\\\mysetup.awgx", "required": true }
+          ],
+          "example": "awg.write('AWGControl:SSAVe \"C:\\\\Setup\\\\mysetup.awgx\"')"
+        },
+        {
+          "name": "Load Setup",
+          "scpi": "AWGControl:SREStore \"{path}\"",
+          "description": "Load setup from file",
+          "params": [
+            { "name": "path", "type": "text", "default": "C:\\\\Setup\\\\mysetup.awgx", "required": true }
+          ],
+          "example": "awg.write('AWGControl:SREStore \"C:\\\\Setup\\\\mysetup.awgx\"')"
+        },
+        {
+          "name": "Query Error",
+          "scpi": "SYSTem:ERRor?",
+          "description": "Query and clear one error from queue",
+          "example": "error = awg.query('SYSTem:ERRor?')"
+        },
+        {
+          "name": "Query Error Count",
+          "scpi": "SYSTem:ERRor:COUNt?",
+          "description": "Query number of errors in queue",
+          "example": "count = awg.query('SYSTem:ERRor:COUNt?')"
+        }
+      ]
+    }
+  }
+}
+
+
+

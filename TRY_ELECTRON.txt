@@ -1,0 +1,51 @@
+═══════════════════════════════════════════════════════════════════
+  ELECTRON BUILD - Administrator Required
+═══════════════════════════════════════════════════════════════════
+
+THE ISSUE:
+Windows needs Administrator privileges to create symbolic links.
+electron-builder downloads files with symlinks → Windows blocks it.
+
+SOLUTION:
+Run as Administrator
+
+───────────────────────────────────────────────────────────────────
+ OPTION 1: Run as Administrator
+───────────────────────────────────────────────────────────────────
+
+1. Right-click: BUILD_ELECTRON_ADMIN.bat
+2. Choose: "Run as administrator"
+3. Wait for build (1-2 minutes)
+4. Find app in: dist\win-unpacked\Tek Automator.exe
+
+───────────────────────────────────────────────────────────────────
+ OPTION 2: Enable Developer Mode (Windows 11)
+───────────────────────────────────────────────────────────────────
+
+This allows symlinks without admin:
+
+1. Open Settings
+2. Go to: Privacy & Security → For developers
+3. Turn ON "Developer Mode"
+4. Restart computer
+5. Run: npm run electron-build-win
+
+───────────────────────────────────────────────────────────────────
+ OPTION 3: Just Use Development Distribution
+───────────────────────────────────────────────────────────────────
+
+If Electron is too much hassle:
+
+> scripts\CREATE_DISTRIBUTION.bat
+
+This creates Tek_Automator_v1.0.zip that works TODAY.
+
+Users: Extract → setup.bat → start.bat → Done!
+
+═══════════════════════════════════════════════════════════════════
+
+RECOMMENDATION:
+Try Option 1 (Run as Administrator) first.
+If it fails, use Option 3 (Development Distribution).
+
+═══════════════════════════════════════════════════════════════════

@@ -1,0 +1,159 @@
+═══════════════════════════════════════════════════════════════════
+  TEST PRODUCTION BUILD - Step by Step
+═══════════════════════════════════════════════════════════════════
+
+FIXED ISSUES:
+✓ SERVE.bat now searches for Node.js in common locations
+✓ Better error messages if Node.js not found
+✓ Production README included (not the dev README)
+✓ Docs folder excluded (cleaner, smaller ZIP)
+
+───────────────────────────────────────────────────────────────────
+ STEP 1: Create Production Build
+───────────────────────────────────────────────────────────────────
+
+Run this command:
+
+   > scripts\CREATE_PRODUCTION_BUILD.bat
+
+Expected result:
+  ✓ Runs 'npm run build'
+  ✓ Creates: Tek_Automator_Production_v1.0.zip
+  ✓ Size: ~5-15 MB
+
+───────────────────────────────────────────────────────────────────
+ STEP 2: Extract and Check Contents
+───────────────────────────────────────────────────────────────────
+
+Extract the ZIP to a test folder.
+
+You should see:
+  ✓ build/ folder (optimized production code)
+  ✓ SERVE.bat (startup script)
+  ✓ README.md (production instructions)
+
+You should NOT see:
+  ✗ src/ folder
+  ✗ docs/ folder
+  ✗ setup.bat or start.bat
+  ✗ node_modules/
+
+───────────────────────────────────────────────────────────────────
+ STEP 3: Test on Clean PC
+───────────────────────────────────────────────────────────────────
+
+On the PC that had issues:
+
+1. Make sure Node.js is installed:
+   - Open Command Prompt
+   - Type: node --version
+   - Should show version like: v18.x.x or v20.x.x
+
+2. If Node.js not found:
+   - Download from: https://nodejs.org/
+   - Install LTS version
+   - **RESTART THE COMPUTER** (required!)
+
+3. Double-click SERVE.bat
+
+Expected behavior:
+  ✓ Shows "Node.js found! Starting server..."
+  ✓ Installs 'serve' package (first time only)
+  ✓ Opens browser at http://localhost:3000
+  ✓ Application loads
+
+───────────────────────────────────────────────────────────────────
+ TROUBLESHOOTING
+───────────────────────────────────────────────────────────────────
+
+Problem: "Node.js NOT Found" error
+
+Solution:
+  1. Open Command Prompt
+  2. Type: node --version
+  3. If "not recognized":
+     - Install Node.js from https://nodejs.org/
+     - During install, check "Add to PATH"
+     - **Restart computer**
+  4. Try SERVE.bat again
+
+Problem: SERVE.bat still can't find npm/npx
+
+Solution:
+  The new SERVE.bat searches these locations:
+  - System PATH
+  - C:\Program Files\nodejs\
+  - C:\Program Files (x86)\nodejs\
+  - %APPDATA%\npm\
+  
+  If still not working:
+  1. Find where Node.js is installed
+  2. Edit SERVE.bat
+  3. Add your custom path to the search locations
+
+Problem: Port 3000 already in use
+
+Solution:
+  - Edit SERVE.bat
+  - Change "3000" to "3001" or another port
+  - Line near bottom: "npx serve -s build -l 3000"
+
+───────────────────────────────────────────────────────────────────
+ WHAT CHANGED
+───────────────────────────────────────────────────────────────────
+
+OLD SERVE.bat:
+  - Only checked PATH
+  - Failed if PATH wasn't set correctly
+  - Simple error message
+
+NEW SERVE.bat:
+  ✓ Checks common Node.js install locations
+  ✓ Adds Node.js to PATH automatically if found
+  ✓ Better error messages
+  ✓ Clear instructions for users
+
+OLD README:
+  - Referenced setup.bat and start.bat (not in production)
+  - Development-focused
+
+NEW README:
+  ✓ Production-specific instructions
+  ✓ Just mentions SERVE.bat
+  ✓ Clear Node.js requirements
+  ✓ Troubleshooting section
+
+───────────────────────────────────────────────────────────────────
+ VERIFICATION CHECKLIST
+───────────────────────────────────────────────────────────────────
+
+Before distributing:
+
+[ ] Production build created successfully
+[ ] ZIP file is ~5-15 MB (not 60+ MB)
+[ ] Extracted and checked contents:
+    [ ] build/ folder exists
+    [ ] SERVE.bat exists
+    [ ] README.md is the production version
+    [ ] No src/ folder
+    [ ] No docs/ folder
+    [ ] No setup.bat or start.bat
+[ ] Tested on clean PC:
+    [ ] SERVE.bat finds Node.js
+    [ ] Browser opens
+    [ ] Application loads
+    [ ] Commands work
+    [ ] Python export works
+
+═══════════════════════════════════════════════════════════════════
+
+Ready to rebuild and test!
+
+1. Run: scripts\CREATE_PRODUCTION_BUILD.bat
+2. Extract ZIP on test PC
+3. Double-click SERVE.bat
+4. Verify it works
+
+The Node.js detection is now much more robust!
+
+═══════════════════════════════════════════════════════════════════

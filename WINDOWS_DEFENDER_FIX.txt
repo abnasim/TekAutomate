@@ -1,0 +1,56 @@
+═══════════════════════════════════════════════════════════════════
+  WINDOWS DEFENDER IS BLOCKING THE .EXE
+═══════════════════════════════════════════════════════════════════
+
+THE ISSUE:
+Windows Defender blocks unsigned .exe files as a security measure.
+
+SOLUTION 1: Use the Unpacked Version (WORKS NOW)
+═══════════════════════════════════════════════════════════════════
+
+Instead of: dist\Tek Automator 1.0.0.exe
+Use: dist\win-unpacked\Tek Automator.exe
+
+This version:
+✓ Works immediately (not blocked)
+✓ Same functionality
+✓ Just distribute the entire win-unpacked folder
+
+Users:
+1. Extract win-unpacked folder
+2. Run "Tek Automator.exe"
+3. Done!
+
+SOLUTION 2: Add Windows Defender Exception
+═══════════════════════════════════════════════════════════════════
+
+For the portable .exe:
+
+1. Open Windows Security
+2. Go to: Virus & threat protection
+3. Click: Manage settings
+4. Scroll down to: Exclusions
+5. Click: Add or remove exclusions
+6. Add: dist\Tek Automator 1.0.0.exe
+
+Then the .exe will run.
+
+SOLUTION 3: Code Signing (Professional, Costs Money)
+═══════════════════════════════════════════════════════════════════
+
+Buy a code signing certificate (~$100-500/year)
+Sign the .exe
+Windows won't block it
+
+This is for public/commercial distribution only.
+
+RECOMMENDATION:
+═══════════════════════════════════════════════════════════════════
+
+For internal team use:
+→ Distribute the win-unpacked folder
+→ Users run: Tek Automator.exe (inside the folder)
+→ No Windows Defender issues
+→ Works perfectly
+
+═══════════════════════════════════════════════════════════════════
