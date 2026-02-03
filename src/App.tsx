@@ -12450,7 +12450,7 @@ Instructions:
                   <Zap className="h-7 w-7 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Tek Automator</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">TekAutomate</h2>
                   <p className="text-sm text-gray-500">Version 2.0.4</p>
                 </div>
               </div>
@@ -12470,7 +12470,7 @@ Instructions:
               <div>
                 <h3 className="font-semibold text-lg mb-2">About</h3>
                 <p className="text-sm leading-relaxed">
-                  Tek Automator is a visual programming tool for automating Tektronix test equipment. 
+                  TekAutomate is a visual programming tool for automating Tektronix test equipment. 
                   Build test sequences with a drag-and-drop interface and generate Python code for your automation workflow.
                 </p>
               </div>
@@ -12493,7 +12493,7 @@ Instructions:
 
               <div className="pt-4 border-t">
                 <p className="text-xs text-gray-500 text-center">
-                  © 2024 Tektronix, Inc. All rights reserved.
+                  © 2026 Tektronix, Inc. All rights reserved.
                 </p>
               </div>
             </div>

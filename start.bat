@@ -1,8 +1,8 @@
 @echo off
 color 0B
-title Tek Automator
+title TekAutomate
 echo ========================================================
-echo  Tek Automator
+echo  TekAutomate
 echo ========================================================
 echo.
 

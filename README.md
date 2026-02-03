@@ -1,4 +1,4 @@
-# Tek Automator
+# TekAutomate
 
 Version 2.0.4 (Beta)
 

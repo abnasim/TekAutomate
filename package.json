@@ -49,8 +49,8 @@
     "electron-build-win": "set CSC_IDENTITY_AUTO_DISCOVERY=false && npm run build && electron-builder --win --x64"
   },
   "build": {
-    "appId": "com.tektronix.automator",
-    "productName": "Tek Automator",
+    "appId": "com.tektronix.tekautomate",
+    "productName": "TekAutomate",
     "files": [
       "build/**/*",
       "public/electron.js"
