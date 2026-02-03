@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global thin scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Firefox thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
 /* Optimized Bouncing Circles Animation for Loading Screen */
 @keyframes bounce-smooth {
   0%, 100% {
