@@ -528,6 +528,59 @@ function convertStepToBlock(
       }
       break;
       
+    case 'save_screenshot':
+      block = workspace.newBlock('save_screenshot');
+      if (step.params.filename) {
+        block.setFieldValue(step.params.filename, 'FILENAME');
+      }
+      if (step.params.scopeType) {
+        // Map scopeType to SCOPE_TYPE field
+        const scopeTypeMap: Record<string, string> = {
+          'modern': 'MODERN',
+          'legacy': 'LEGACY'
+        };
+        block.setFieldValue(scopeTypeMap[step.params.scopeType] || 'MODERN', 'SCOPE_TYPE');
+      }
+      break;
+      
+    case 'recall':
+      block = workspace.newBlock('recall');
+      if (step.params.recallType) {
+        block.setFieldValue(step.params.recallType, 'RECALL_TYPE');
+      }
+      if (step.params.filePath) {
+        block.setFieldValue(step.params.filePath, 'FILE_PATH');
+      }
+      if (step.params.reference) {
+        block.setFieldValue(step.params.reference, 'REFERENCE');
+      }
+      break;
+      
+    case 'set_and_query':
+      // Convert set_and_query to a write block (query part is implicit)
+      block = workspace.newBlock('scpi_write');
+      if (step.params.command) {
+        block.setFieldValue(step.params.command, 'COMMAND');
+      }
+      break;
+      
+    case 'error_check':
+      // Convert error_check to a query block
+      block = workspace.newBlock('scpi_query');
+      if (step.params.command) {
+        block.setFieldValue(step.params.command, 'COMMAND');
+      }
+      block.setFieldValue('errors', 'VARIABLE');
+      break;
+      
+    case 'tm_device_command':
+      // Convert tm_device_command to python_code block
+      block = workspace.newBlock('python_code');
+      if (step.params.code) {
+        block.setFieldValue(step.params.code, 'CODE');
+      }
+      break;
+      
     case 'group':
       // Groups are flattened - their children become sequential blocks
       // This is handled by the parent loop checking step.children

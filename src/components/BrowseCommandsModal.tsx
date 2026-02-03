@@ -263,12 +263,31 @@ export const BrowseCommandsModal: React.FC<BrowseCommandsModalProps> = ({
   useEffect(() => {
     if (isOpen && initialCommand && commands.length > 0) {
       // Find the command that matches the initial command
-      // Try exact match first, then try without special characters
+      // The initialCommand might have concrete values (e.g., "CURSOR:STATE ON")
+      // while the database has templates (e.g., "CURSOR:STATE {ON|OFF}")
       const normalizedInitial = initialCommand.trim().toUpperCase().replace(/\?$/, '');
-      const matchedCommand = commands.find(cmd => {
+      
+      // Extract just the command header (before the space/argument)
+      const initialHeader = normalizedInitial.split(/\s+/)[0];
+      
+      // Try multiple matching strategies
+      let matchedCommand = commands.find(cmd => {
         const normalized = cmd.scpi.trim().toUpperCase().replace(/\?$/, '');
-        return normalized === normalizedInitial || normalized.includes(normalizedInitial);
+        // Exact match
+        if (normalized === normalizedInitial) return true;
+        // Header match (command without arguments)
+        const cmdHeader = normalized.split(/\s+/)[0];
+        if (cmdHeader === initialHeader) return true;
+        return false;
       });
+      
+      // If no match, try fuzzy match (initial command contains the header)
+      if (!matchedCommand) {
+        matchedCommand = commands.find(cmd => {
+          const cmdHeader = cmd.scpi.trim().toUpperCase().replace(/\?$/, '').split(/\s+/)[0];
+          return normalizedInitial.startsWith(cmdHeader);
+        });
+      }
       
       if (matchedCommand) {
         // Set the selected command
@@ -279,13 +298,17 @@ export const BrowseCommandsModal: React.FC<BrowseCommandsModalProps> = ({
           setSelectedCat(matchedCommand.category);
         }
         
+        // Also set search to help user find the command
+        setSearch(initialHeader);
+        
         // Scroll to the command after a short delay to allow rendering
+        const scrollToCommand = matchedCommand; // Capture for closure
         setTimeout(() => {
-          if (commandGridRef.current) {
+          if (commandGridRef.current && scrollToCommand) {
             // Find the command element in the grid
             const commandElements = commandGridRef.current.querySelectorAll('[data-command-scpi]');
             for (const el of Array.from(commandElements)) {
-              if ((el as HTMLElement).dataset.commandScpi === matchedCommand.scpi) {
+              if ((el as HTMLElement).dataset.commandScpi === scrollToCommand.scpi) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 break;
               }

@@ -11,6 +11,7 @@ import './timingBlocks';
 import './utilityBlocks';
 import './tmDevicesBlocks';
 import './tekexpressBlocks';  // TekExpress compliance testing blocks
+import './logicBlockOverrides';  // Override standard logic blocks for flexible type connections
 
 // Export helper functions
 export { updateDeviceDropdowns } from './connectionBlocks';

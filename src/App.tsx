@@ -5,7 +5,8 @@ import {
   GitBranch, RefreshCw, Star,
   Monitor, Cpu, Battery, Gauge, Activity, Radio, ArrowUp, ArrowDown, Edit, GraduationCap, Plus, BookOpen, HelpCircle,
   // Better step icons
-  PlugZap, Unplug, Send, Timer, MessageSquare, HardDriveDownload, ShieldAlert, FolderOpen, Maximize2, Camera
+  PlugZap, Unplug, Send, Timer, MessageSquare, HardDriveDownload, ShieldAlert, FolderOpen, Maximize2, Camera,
+  FolderInput, Save
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { BlocklyBuilder } from './components/BlocklyBuilder';
@@ -29,7 +30,7 @@ import { SCPICommandTreeBuilder } from './components/SCPICommandTreeBuilder';
 
 /* ===================== Types ===================== */
 type Backend = 'pyvisa' | 'tm_devices' | 'vxi11' | 'tekhsi' | 'hybrid';
-type StepType = 'connect' | 'disconnect' | 'query' | 'write' | 'set_and_query' | 'sleep' | 'comment' | 'python' | 'save_waveform' | 'save_screenshot' | 'error_check' | 'group' | 'tm_device_command';
+type StepType = 'connect' | 'disconnect' | 'query' | 'write' | 'set_and_query' | 'sleep' | 'comment' | 'python' | 'save_waveform' | 'save_screenshot' | 'error_check' | 'group' | 'tm_device_command' | 'recall';
 type ConnectionType = 'tcpip' | 'socket' | 'usb' | 'gpib';
 
 interface InstrumentConfig {
@@ -44,7 +45,7 @@ interface InstrumentConfig {
   backend: Backend;
   timeout: number;
   modelFamily: string;
-  deviceType: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS';
+  deviceType: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS' | 'TEKSCOPE_PC';
   deviceDriver: string;
   alias: string;
   visaBackend: 'system' | 'pyvisa-py';
@@ -70,7 +71,7 @@ interface Template {
   backend?: Backend;
   category?: string;
   source?: string;
-  deviceType?: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS';
+  deviceType?: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS' | 'TEKSCOPE_PC';
   deviceDriver?: string;
 }
 
@@ -265,6 +266,10 @@ const TM_DEVICE_TYPES = {
   SS: {
     label: 'Systems Switch',
     drivers: ['SS3706A']
+  },
+  TEKSCOPE_PC: {
+    label: 'TekScope PC',
+    drivers: ['TekScopePC']
   }
 };
 
@@ -275,6 +280,7 @@ const STEP_PALETTE = [
   { type: 'write' as StepType, label: 'Write', icon: Send, color: 'bg-amber-100 text-amber-700' },
   { type: 'set_and_query' as StepType, label: 'Set+Query', icon: RefreshCw, color: 'bg-teal-100 text-teal-700' },
   { type: 'tm_device_command' as StepType, label: 'tm_devices Command', icon: Zap, color: 'bg-purple-100 text-purple-700' },
+  { type: 'recall' as StepType, label: 'Recall', icon: FolderInput, color: 'bg-orange-100 text-orange-700' },
   { type: 'sleep' as StepType, label: 'Sleep', icon: Timer, color: 'bg-yellow-100 text-yellow-700' },
   { type: 'python' as StepType, label: 'Python', icon: Code2, color: 'bg-slate-100 text-slate-700' },
   { type: 'comment' as StepType, label: 'Comment', icon: MessageSquare, color: 'bg-gray-100 text-gray-700' },
@@ -2052,6 +2058,7 @@ function AppInner() {
         type === 'connect' ? { instrumentId: devices[0]?.id || '', instrumentIds: [], printIdn: false } :
         type === 'disconnect' ? { instrumentId: '', instrumentIds: [] } :
         type === 'tm_device_command' ? { code: '', model: '', description: '' } :
+        type === 'recall' ? { recallType: 'FACTORY', filePath: '', reference: 'REF1' } :
         {},
       children: type === 'group' ? [] : undefined,
       collapsed: false
@@ -4032,6 +4039,41 @@ ${waveformHelper}
             out += `${indent}pathlib.Path(${JSON.stringify('./screenshots/' + fn)}).write_bytes(data)\n`;
             out += `${indent}${devRef}.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')\n`;
             out += `${indent}print(f"Screenshot saved to ./screenshots/${fn}")\n`;
+          }
+        } else if (s.type === 'recall') {
+          const deviceVar = getDeviceVar(s);
+          const isTmDevice = isTmDevicesDevice(deviceVar);
+          const devRef = isTmDevice ? `devices['${deviceVar}'].visa_resource` : `devices['${deviceVar}']`;
+          
+          const recallType = s.params.recallType || 'FACTORY';
+          const filePath = s.params.filePath || '';
+          const reference = s.params.reference || 'REF1';
+          
+          switch (recallType) {
+            case 'FACTORY':
+              out += `${indent}# Recall factory defaults\n`;
+              out += `${indent}${devRef}.write('RECALL:SETUP FACTORY')\n`;
+              out += `${indent}print("Recalled factory defaults")\n`;
+              break;
+              
+            case 'SETUP':
+              out += `${indent}# Recall setup (.SET) from ${filePath}\n`;
+              out += `${indent}${devRef}.write('RECALL:SETUP "${filePath}"')\n`;
+              out += `${indent}print("Recalled setup from ${filePath}")\n`;
+              break;
+              
+            case 'SESSION':
+              out += `${indent}# Recall session (.TSS) from ${filePath}\n`;
+              out += `${indent}${devRef}.write('RECALL:SESSION "${filePath}"')\n`;
+              out += `${indent}time.sleep(2)  # Wait for session to load\n`;
+              out += `${indent}print("Recalled session from ${filePath}")\n`;
+              break;
+              
+            case 'WAVEFORM':
+              out += `${indent}# Recall waveform to ${reference} from ${filePath}\n`;
+              out += `${indent}${devRef}.write('RECALL:WAVEFORM "${filePath}",${reference}')\n`;
+              out += `${indent}print("Recalled waveform to ${reference} from ${filePath}")\n`;
+              break;
           }
         }
       }
@@ -6703,6 +6745,21 @@ Generated by TekAutomate
                                           </span>
                                           <span className="text-xs font-mono text-gray-500 truncate min-w-[200px]">{visaResourceString}</span>
                                           
+                                          {/* Delete Device Button */}
+                                          {devices.length > 1 && (
+                                            <button
+                                              onClick={() => {
+                                                if (window.confirm(`Remove device "${device.alias}"?`)) {
+                                                  setDevices(prev => prev.filter(d => d.id !== device.id));
+                                                }
+                                              }}
+                                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                              title="Remove device"
+                                            >
+                                              <X size={14} />
+                                            </button>
+                                          )}
+                                          
                                           {/* Connection */}
                                           <div className="flex items-center gap-1">
                                             <label className="text-xs font-medium whitespace-nowrap">Connection:</label>
@@ -7075,6 +7132,19 @@ Generated by TekAutomate
                                               {device.backend}
                                             </span>
                                             <span className="text-xs font-mono text-gray-500 truncate flex-1 min-w-0">{visaResourceString}</span>
+                                            
+                                            {/* Delete Device Button */}
+                                            <button
+                                              onClick={() => {
+                                                if (window.confirm(`Remove device "${device.alias}"?`)) {
+                                                  setDevices(prev => prev.filter(d => d.id !== device.id));
+                                                }
+                                              }}
+                                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                                              title="Remove device"
+                                            >
+                                              <X size={14} />
+                                            </button>
                                           </div>
                                           
                                           {/* Compact 3-column grid for Connection, Host/IP, Port */}
@@ -10128,6 +10198,153 @@ Generated by TekAutomate
                     </div>
                   )}
 
+                  {/* Recall Step UI */}
+                  {selectedStepData.type === 'recall' && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                      {/* Section 1: Recall Type */}
+                      <div className="space-y-3">
+                        <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-[10px] font-bold">1</span>
+                          What to Recall
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { value: 'FACTORY', label: '🔄 Factory Defaults', desc: 'Reset all settings' },
+                            { value: 'SETUP', label: '⚙️ Setup (.SET)', desc: 'Settings only' },
+                            { value: 'SESSION', label: '📦 Session (.TSS)', desc: 'Full session with waveforms' },
+                            { value: 'WAVEFORM', label: '📈 Waveform', desc: 'Load waveform to reference' }
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              onClick={() => updateStep(selectedStepData.id, { 
+                                params: { ...selectedStepData.params, recallType: opt.value } 
+                              })}
+                              className={`p-2.5 rounded border text-left transition-all ${
+                                (selectedStepData.params.recallType || 'FACTORY') === opt.value 
+                                  ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200' 
+                                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="text-sm font-medium">{opt.label}</div>
+                              <div className="text-[10px] text-gray-500">{opt.desc}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Section 2: File Path (hidden for Factory) */}
+                      {(selectedStepData.params.recallType || 'FACTORY') !== 'FACTORY' && (
+                        <div className="space-y-3">
+                          <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-[10px] font-bold">2</span>
+                            File Path
+                          </h4>
+                          <div>
+                            <input
+                              type="text"
+                              value={selectedStepData.params.filePath || ''}
+                              onChange={(e) =>
+                                updateStep(selectedStepData.id, { params: { ...selectedStepData.params, filePath: e.target.value } })
+                              }
+                              placeholder={
+                                selectedStepData.params.recallType === 'SETUP' ? 'C:/Users/Public/Tektronix/TekScope/Setups/MySetup.set' :
+                                selectedStepData.params.recallType === 'SESSION' ? 'C:/Users/Public/Tektronix/TekScope/Sessions/MySession.tss' :
+                                'C:/Users/Public/Tektronix/TekScope/Waveforms/MyWaveform.wfm'
+                              }
+                              className="w-full px-2.5 py-1.5 text-xs font-mono border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none bg-white"
+                            />
+                            <p className="text-[10px] text-gray-500 mt-1">
+                              {selectedStepData.params.recallType === 'SETUP' && 'Path to .SET file (settings only)'}
+                              {selectedStepData.params.recallType === 'SESSION' && 'Path to .TSS file (full session with waveforms)'}
+                              {selectedStepData.params.recallType === 'WAVEFORM' && 'Path to .WFM file'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Section 3: Reference (only for Waveform) */}
+                      {selectedStepData.params.recallType === 'WAVEFORM' && (
+                        <div className="space-y-3">
+                          <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-[10px] font-bold">3</span>
+                            Target Reference
+                          </h4>
+                          <div className="grid grid-cols-4 gap-2">
+                            {['REF1', 'REF2', 'REF3', 'REF4'].map(ref => (
+                              <button
+                                key={ref}
+                                onClick={() => updateStep(selectedStepData.id, { 
+                                  params: { ...selectedStepData.params, reference: ref } 
+                                })}
+                                className={`p-2 rounded border text-center transition-all ${
+                                  (selectedStepData.params.reference || 'REF1') === ref 
+                                    ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200 font-bold' 
+                                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                }`}
+                              >
+                                {ref}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Info Box */}
+                      <div className={`rounded p-2.5 ${
+                        (selectedStepData.params.recallType || 'FACTORY') === 'FACTORY' ? 'bg-blue-50 border border-blue-200' :
+                        selectedStepData.params.recallType === 'SETUP' ? 'bg-green-50 border border-green-200' :
+                        selectedStepData.params.recallType === 'SESSION' ? 'bg-purple-50 border border-purple-200' :
+                        'bg-amber-50 border border-amber-200'
+                      }`}>
+                        {(selectedStepData.params.recallType || 'FACTORY') === 'FACTORY' && (
+                          <>
+                            <p className="text-xs text-blue-800 font-medium">🔄 Factory Reset</p>
+                            <p className="text-[10px] text-blue-700 mt-1">
+                              Resets all instrument settings to factory defaults. No file needed.
+                            </p>
+                          </>
+                        )}
+                        {selectedStepData.params.recallType === 'SETUP' && (
+                          <>
+                            <p className="text-xs text-green-800 font-medium">⚙️ Setup File (.SET)</p>
+                            <p className="text-[10px] text-green-700 mt-1">
+                              Recalls <strong>settings only</strong> - channel scales, trigger, horizontal, etc.
+                              Does NOT include waveform data or measurements.
+                            </p>
+                          </>
+                        )}
+                        {selectedStepData.params.recallType === 'SESSION' && (
+                          <>
+                            <p className="text-xs text-purple-800 font-medium">📦 Session File (.TSS)</p>
+                            <p className="text-[10px] text-purple-700 mt-1">
+                              Recalls <strong>everything</strong> - settings, waveforms, measurements, math, references.
+                              Use this to restore a complete scope state.
+                            </p>
+                          </>
+                        )}
+                        {selectedStepData.params.recallType === 'WAVEFORM' && (
+                          <>
+                            <p className="text-xs text-amber-800 font-medium">📈 Waveform File (.WFM)</p>
+                            <p className="text-[10px] text-amber-700 mt-1">
+                              Loads a saved waveform into a reference channel (REF1-REF4).
+                              Useful for comparing live signals against golden waveforms.
+                            </p>
+                          </>
+                        )}
+                      </div>
+
+                      {/* SCPI Preview */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs font-semibold text-gray-600 mb-2">SCPI Command:</div>
+                        <code className="text-xs font-mono text-orange-600 break-all">
+                          {(selectedStepData.params.recallType || 'FACTORY') === 'FACTORY' && 'RECALL:SETUP FACTORY'}
+                          {selectedStepData.params.recallType === 'SETUP' && `RECALL:SETUP "${selectedStepData.params.filePath || ''}"`}
+                          {selectedStepData.params.recallType === 'SESSION' && `RECALL:SESSION "${selectedStepData.params.filePath || ''}"`}
+                          {selectedStepData.params.recallType === 'WAVEFORM' && `RECALL:WAVEFORM "${selectedStepData.params.filePath || ''}",${selectedStepData.params.reference || 'REF1'}`}
+                        </code>
+                      </div>
+                    </div>
+                  )}
 
                   {/* SCPI Preview - Set & Query */}
                   {selectedStepData.type === 'set_and_query' && (() => {

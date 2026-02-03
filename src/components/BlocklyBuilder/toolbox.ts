@@ -83,9 +83,25 @@ export const createToolboxConfig = () => {
       },
       {
         kind: 'category',
-        name: 'Data',
-        colour: '#7c3aed', // Violet
+        name: 'Save/Recall',
+        colour: '#f97316', // Orange for file operations
         contents: [
+          {
+            kind: 'label',
+            text: '── Smart Blocks (Recommended) ──'
+          },
+          {
+            kind: 'block',
+            type: 'recall'
+          },
+          {
+            kind: 'block',
+            type: 'save'
+          },
+          {
+            kind: 'label',
+            text: '── Legacy Blocks ──'
+          },
           {
             kind: 'block',
             type: 'save_waveform'

@@ -4,7 +4,7 @@
 export interface DeviceEntry {
   id: string;
   alias: string;
-  deviceType: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS';
+  deviceType: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS' | 'TEKSCOPE_PC';
   backend: 'pyvisa' | 'tm_devices' | 'vxi11' | 'tekhsi' | 'hybrid';
   enabled: boolean;
   connectionType?: 'tcpip' | 'socket' | 'usb' | 'gpib';
@@ -17,7 +17,7 @@ export interface DeviceEntry {
 }
 
 // Step interface from App.tsx (for import feature)
-export type StepType = 'connect' | 'disconnect' | 'query' | 'write' | 'set_and_query' | 'sleep' | 'comment' | 'python' | 'save_waveform' | 'save_screenshot' | 'error_check' | 'group' | 'tm_device_command';
+export type StepType = 'connect' | 'disconnect' | 'query' | 'write' | 'set_and_query' | 'sleep' | 'comment' | 'python' | 'save_waveform' | 'save_screenshot' | 'error_check' | 'group' | 'tm_device_command' | 'recall';
 
 export interface Step {
   id: string;

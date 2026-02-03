@@ -224,3 +224,214 @@ Blockly.Blocks['save_screenshot'] = {
     }
   }
 };
+
+/**
+ * Recall Block - Smart block for recalling settings/sessions/waveforms
+ * Makes it clear what type of file you're recalling:
+ * - Factory: Reset to factory defaults (no file needed)
+ * - Setup (.SET): Recall instrument settings only
+ * - Session (.TSS): Recall full session (settings + waveforms + measurements)
+ * - Waveform: Recall a saved waveform to a reference
+ */
+Blockly.Blocks['recall'] = {
+  init: function() {
+    this.appendDummyInput('HEADER')
+        .appendField('📂 Recall');
+    this.appendDummyInput('DEVICE_CONTEXT_INPUT')
+        .appendField('Device:')
+        .appendField(new Blockly.FieldLabelSerializable('(scope)'), 'DEVICE_CONTEXT');
+    this.appendDummyInput('TYPE_INPUT')
+        .appendField('Recall Type:')
+        .appendField(new Blockly.FieldDropdown([
+          ['🔄 Factory Defaults', 'FACTORY'],
+          ['⚙️ Setup (.SET) - Settings only', 'SETUP'],
+          ['📦 Session (.TSS) - Full session', 'SESSION'],
+          ['📈 Waveform to Reference', 'WAVEFORM']
+        ], this.onTypeChange_.bind(this)), 'RECALL_TYPE');
+    
+    // File path input (hidden for Factory)
+    this.appendDummyInput('FILE_INPUT')
+        .appendField('File Path:')
+        .appendField(new Blockly.FieldTextInput(''), 'FILE_PATH');
+    
+    // Reference input (only for Waveform)
+    this.appendDummyInput('REF_INPUT')
+        .appendField('To Reference:')
+        .appendField(new Blockly.FieldDropdown([
+          ['REF1', 'REF1'],
+          ['REF2', 'REF2'],
+          ['REF3', 'REF3'],
+          ['REF4', 'REF4']
+        ]), 'REFERENCE');
+    
+    this.setPreviousStatement(true, null);
+    this.setNextStatement(true, null);
+    this.setColour(45); // Orange for file operations
+    this.setTooltip('Recall saved data to the instrument.\n\n' +
+      '• Factory Defaults: Reset all settings (RECALL:SETUP FACTORY)\n' +
+      '• Setup (.SET): Recall settings only (RECALL:SETUP "file.set")\n' +
+      '• Session (.TSS): Recall full session including waveforms (RECALL:SESSION "file.tss")\n' +
+      '• Waveform: Recall waveform to reference (RECALL:WAVEFORM "file.wfm",REF1)');
+    this.setHelpUrl('');
+    
+    // Initialize visibility
+    this.updateShape_();
+  },
+  
+  onTypeChange_: function(newValue: string) {
+    this.updateShape_();
+    return newValue;
+  },
+  
+  updateShape_: function() {
+    const recallType = this.getFieldValue('RECALL_TYPE') || 'FACTORY';
+    
+    // Show/hide file path input
+    const fileInput = this.getInput('FILE_INPUT');
+    if (fileInput) {
+      fileInput.setVisible(recallType !== 'FACTORY');
+    }
+    
+    // Show/hide reference input (only for WAVEFORM)
+    const refInput = this.getInput('REF_INPUT');
+    if (refInput) {
+      refInput.setVisible(recallType === 'WAVEFORM');
+    }
+    
+    // Update file path placeholder based on type
+    const filePathField = this.getField('FILE_PATH');
+    if (filePathField) {
+      if (recallType === 'SETUP') {
+        (filePathField as any).setValue((filePathField as any).getValue() || 'C:/Users/Public/Tektronix/TekScope/Setups/MySetup.set');
+      } else if (recallType === 'SESSION') {
+        (filePathField as any).setValue((filePathField as any).getValue() || 'C:/Users/Public/Tektronix/TekScope/Sessions/MySession.tss');
+      } else if (recallType === 'WAVEFORM') {
+        (filePathField as any).setValue((filePathField as any).getValue() || 'C:/Users/Public/Tektronix/TekScope/Waveforms/MyWaveform.wfm');
+      }
+    }
+    
+    // Force re-render
+    if (this.rendered) {
+      this.render();
+    }
+  },
+  
+  mutationToDom: function() {
+    const container = Blockly.utils.xml.createElement('mutation');
+    container.setAttribute('recall_type', this.getFieldValue('RECALL_TYPE') || 'FACTORY');
+    return container;
+  },
+  
+  domToMutation: function(xmlElement: Element) {
+    const recallType = xmlElement.getAttribute('recall_type');
+    if (recallType) {
+      this.setFieldValue(recallType, 'RECALL_TYPE');
+    }
+    this.updateShape_();
+  }
+};
+
+/**
+ * Save Block - Smart block for saving settings/sessions/waveforms
+ * Complements the Recall block
+ */
+Blockly.Blocks['save'] = {
+  init: function() {
+    this.appendDummyInput('HEADER')
+        .appendField('💾 Save');
+    this.appendDummyInput('DEVICE_CONTEXT_INPUT')
+        .appendField('Device:')
+        .appendField(new Blockly.FieldLabelSerializable('(scope)'), 'DEVICE_CONTEXT');
+    this.appendDummyInput('TYPE_INPUT')
+        .appendField('Save Type:')
+        .appendField(new Blockly.FieldDropdown([
+          ['⚙️ Setup (.SET) - Settings only', 'SETUP'],
+          ['📦 Session (.TSS) - Full session', 'SESSION'],
+          ['📈 Waveform from Channel/Ref', 'WAVEFORM'],
+          ['📷 Screenshot', 'IMAGE']
+        ], this.onTypeChange_.bind(this)), 'SAVE_TYPE');
+    
+    // File path input
+    this.appendDummyInput('FILE_INPUT')
+        .appendField('File Path:')
+        .appendField(new Blockly.FieldTextInput(''), 'FILE_PATH');
+    
+    // Source input (only for Waveform)
+    this.appendDummyInput('SOURCE_INPUT')
+        .appendField('From Source:')
+        .appendField(new Blockly.FieldDropdown([
+          ['CH1', 'CH1'],
+          ['CH2', 'CH2'],
+          ['CH3', 'CH3'],
+          ['CH4', 'CH4'],
+          ['REF1', 'REF1'],
+          ['REF2', 'REF2'],
+          ['MATH1', 'MATH1']
+        ]), 'SOURCE');
+    
+    this.setPreviousStatement(true, null);
+    this.setNextStatement(true, null);
+    this.setColour(45); // Orange for file operations
+    this.setTooltip('Save data from the instrument.\n\n' +
+      '• Setup (.SET): Save settings only (SAVE:SETUP "file.set")\n' +
+      '• Session (.TSS): Save full session including waveforms (SAVE:SESSION "file.tss")\n' +
+      '• Waveform: Save waveform from source (SAVE:WAVEFORM CH1,"file.wfm")\n' +
+      '• Screenshot: Save screen image (SAVE:IMAGE "file.png")');
+    this.setHelpUrl('');
+    
+    // Initialize visibility
+    this.updateShape_();
+  },
+  
+  onTypeChange_: function(newValue: string) {
+    this.updateShape_();
+    return newValue;
+  },
+  
+  updateShape_: function() {
+    const saveType = this.getFieldValue('SAVE_TYPE') || 'SETUP';
+    
+    // Show/hide source input (only for WAVEFORM)
+    const sourceInput = this.getInput('SOURCE_INPUT');
+    if (sourceInput) {
+      sourceInput.setVisible(saveType === 'WAVEFORM');
+    }
+    
+    // Update file path placeholder based on type
+    const filePathField = this.getField('FILE_PATH');
+    if (filePathField) {
+      const currentValue = (filePathField as any).getValue();
+      if (!currentValue || currentValue.includes('MySetup') || currentValue.includes('MySession') || 
+          currentValue.includes('MyWaveform') || currentValue.includes('screenshot')) {
+        if (saveType === 'SETUP') {
+          (filePathField as any).setValue('C:/Users/Public/Tektronix/TekScope/Setups/MySetup.set');
+        } else if (saveType === 'SESSION') {
+          (filePathField as any).setValue('C:/Users/Public/Tektronix/TekScope/Sessions/MySession.tss');
+        } else if (saveType === 'WAVEFORM') {
+          (filePathField as any).setValue('C:/Users/Public/Tektronix/TekScope/Waveforms/MyWaveform.wfm');
+        } else if (saveType === 'IMAGE') {
+          (filePathField as any).setValue('C:/Temp/screenshot.png');
+        }
+      }
+    }
+    
+    // Force re-render
+    if (this.rendered) {
+      this.render();
+    }
+  },
+  
+  mutationToDom: function() {
+    const container = Blockly.utils.xml.createElement('mutation');
+    container.setAttribute('save_type', this.getFieldValue('SAVE_TYPE') || 'SETUP');
+    return container;
+  },
+  
+  domToMutation: function(xmlElement: Element) {
+    const saveType = xmlElement.getAttribute('save_type');
+    if (saveType) {
+      this.setFieldValue(saveType, 'SAVE_TYPE');
+    }
+    this.updateShape_();
+  }
+};

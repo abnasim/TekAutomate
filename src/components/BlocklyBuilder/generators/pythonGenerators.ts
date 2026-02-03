@@ -108,16 +108,19 @@ export function setDeviceInfo(info: Map<string, { deviceType?: DeviceType; backe
 function getDeviceInfo(deviceName: string): { deviceType?: DeviceType; backend?: string } {
   const deviceNameLower = deviceName.toLowerCase();
   
-  // First try direct lookup
-  let info = deviceInfoMap.get(deviceNameLower);
-  if (info && info.backend) {
-    return info;
+  // PRIORITY 1: Check deviceBackends map (set from connect_scope block during generation)
+  // This is the AUTHORITATIVE source because it comes from the actual Blockly workspace
+  const backendFromBlock = deviceBackends.get(deviceName) || deviceBackends.get(deviceNameLower);
+  if (backendFromBlock) {
+    const info = deviceInfoMap.get(deviceNameLower);
+    return { backend: backendFromBlock, deviceType: info?.deviceType };
   }
   
-  // Fallback: Check deviceBackends map (set during connection)
-  const backend = deviceBackends.get(deviceName);
-  if (backend) {
-    return { backend, deviceType: info?.deviceType };
+  // PRIORITY 2: Check deviceInfoMap (set from UI device configuration)
+  // This is a fallback for when the connect_scope block hasn't been processed yet
+  const info = deviceInfoMap.get(deviceNameLower);
+  if (info && info.backend) {
+    return info;
   }
   
   // Return empty object if not found (will default to PyVISA behavior)
@@ -398,7 +401,9 @@ pythonGenerator.forBlock['connect_scope'] = function(block) {
   connectedDevices.push(deviceName);
   
   // Track device backend for proper cleanup
+  // Store with both original case and lowercase for consistent lookup
   deviceBackends.set(deviceName, backend as 'tm_devices' | 'pyvisa' | 'vxi11' | 'tekhsi' | 'hybrid');
+  deviceBackends.set(deviceName.toLowerCase(), backend as 'tm_devices' | 'pyvisa' | 'vxi11' | 'tekhsi' | 'hybrid');
   
   // Store device type and backend info for capability checking
   // Reuse variables already declared in function scope
@@ -862,8 +867,11 @@ pythonGenerator.forBlock['scpi_write'] = function(block) {
     return '';
   }
   
-  const command = block.getFieldValue('COMMAND');
+  const rawCommand = block.getFieldValue('COMMAND');
   const device = getDeviceVariable(block);
+  
+  // Sanitize command - remove newlines and extra whitespace
+  const command = rawCommand ? rawCommand.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
   
   // Check if backend is tm_devices - convert SCPI to tm_devices style
   const deviceInfo = getDeviceInfo(device);
@@ -913,9 +921,12 @@ pythonGenerator.forBlock['scpi_write'] = function(block) {
 };
 
 pythonGenerator.forBlock['scpi_query'] = function(block) {
-  const command = block.getFieldValue('COMMAND');
+  const rawCommand = block.getFieldValue('COMMAND');
   const variable = block.getFieldValue('VARIABLE');
   const device = getDeviceVariable(block);
+  
+  // Sanitize command - remove newlines and extra whitespace
+  const command = rawCommand ? rawCommand.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
   
   // Check if backend is tm_devices - convert SCPI to tm_devices style
   const deviceInfo = getDeviceInfo(device);
@@ -1351,6 +1362,92 @@ pythonGenerator.forBlock['save_screenshot'] = function(block) {
     // Delete temp file from scope
     code += `${device}.write(f'FILESYSTEM:DELETE "{_ss_scope_temp}"')\n`;
     code += `print(f"Saved screenshot to {_ss_local}")\n`;
+  }
+  
+  return code;
+};
+
+// Recall Block - Smart recall for settings/sessions/waveforms
+pythonGenerator.forBlock['recall'] = function(block) {
+  const recallType = block.getFieldValue('RECALL_TYPE') || 'FACTORY';
+  const filePath = block.getFieldValue('FILE_PATH') || '';
+  const reference = block.getFieldValue('REFERENCE') || 'REF1';
+  const device = getDeviceVariable(block);
+  
+  // Track device usage
+  usedDevices.add(device);
+  
+  let code = '';
+  
+  switch (recallType) {
+    case 'FACTORY':
+      code = `# Recall factory defaults on ${device}\n`;
+      code += `${device}.write('RECALL:SETUP FACTORY')\n`;
+      code += `print("Recalled factory defaults")\n`;
+      break;
+      
+    case 'SETUP':
+      code = `# Recall setup (.SET) from ${filePath}\n`;
+      code += `${device}.write('RECALL:SETUP "${filePath}"')\n`;
+      code += `print("Recalled setup from ${filePath}")\n`;
+      break;
+      
+    case 'SESSION':
+      code = `# Recall session (.TSS) from ${filePath}\n`;
+      code += `${device}.write('RECALL:SESSION "${filePath}"')\n`;
+      code += `time.sleep(2)  # Wait for session to load\n`;
+      code += `print("Recalled session from ${filePath}")\n`;
+      break;
+      
+    case 'WAVEFORM':
+      code = `# Recall waveform to ${reference} from ${filePath}\n`;
+      code += `${device}.write('RECALL:WAVEFORM "${filePath}",${reference}')\n`;
+      code += `print("Recalled waveform to ${reference} from ${filePath}")\n`;
+      break;
+  }
+  
+  return code;
+};
+
+// Save Block - Smart save for settings/sessions/waveforms
+pythonGenerator.forBlock['save'] = function(block) {
+  const saveType = block.getFieldValue('SAVE_TYPE') || 'SETUP';
+  const filePath = block.getFieldValue('FILE_PATH') || '';
+  const source = block.getFieldValue('SOURCE') || 'CH1';
+  const device = getDeviceVariable(block);
+  
+  // Track device usage
+  usedDevices.add(device);
+  
+  let code = '';
+  
+  switch (saveType) {
+    case 'SETUP':
+      code = `# Save setup (.SET) to ${filePath}\n`;
+      code += `${device}.write('SAVE:SETUP "${filePath}"')\n`;
+      code += `print("Saved setup to ${filePath}")\n`;
+      break;
+      
+    case 'SESSION':
+      code = `# Save session (.TSS) to ${filePath}\n`;
+      code += `${device}.write('SAVE:SESSION "${filePath}"')\n`;
+      code += `time.sleep(2)  # Wait for session to save\n`;
+      code += `print("Saved session to ${filePath}")\n`;
+      break;
+      
+    case 'WAVEFORM':
+      code = `# Save waveform from ${source} to ${filePath}\n`;
+      code += `${device}.write('SAVE:WAVEFORM ${source},"${filePath}"')\n`;
+      code += `print("Saved waveform from ${source} to ${filePath}")\n`;
+      break;
+      
+    case 'IMAGE':
+      // For image, delegate to the more comprehensive save_screenshot logic
+      // or use simple SAVE:IMAGE command
+      code = `# Save screenshot to ${filePath}\n`;
+      code += `${device}.write('SAVE:IMAGE "${filePath}"')\n`;
+      code += `print("Saved screenshot to ${filePath}")\n`;
+      break;
   }
   
   return code;

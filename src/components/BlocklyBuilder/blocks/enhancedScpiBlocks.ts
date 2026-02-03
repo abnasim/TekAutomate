@@ -3,6 +3,7 @@
 import * as Blockly from 'blockly';
 import { parseSCPI } from '../../../utils/scpiParser';
 import { detectEditableParameters, replaceParameter } from '../../../utils/scpiParameterDetector';
+import { lookupCommand, getCommandParams, CommandParam } from '../utils/commandRegistry';
 
 // Color constants for better differentiation
 const WRITE_COLOR = 160;  // Green-teal for Write commands (sending data)
@@ -120,7 +121,11 @@ Blockly.Blocks['scpi_write'] = {
       const parsed = parseSCPI(command);
       let params = detectEditableParameters(parsed);
       
-      if (params.length === 0) {
+      // Look up command metadata from registry for additional options
+      const cmdMetadata = lookupCommand(command);
+      const cmdParams: CommandParam[] = cmdMetadata?.params || [];
+      
+      if (params.length === 0 && cmdParams.length === 0) {
         this.isUpdating_ = false;
         return; // No parameters to show
       }
@@ -137,6 +142,132 @@ Blockly.Blocks['scpi_write'] = {
         }
         return param;
       });
+      
+      // Merge options from command registry into detected params
+      // The registry has the authoritative list of valid options from the command database
+      params = params.map((param, idx) => {
+        // Find matching param from command metadata by index or type
+        const metaParam = cmdParams[idx];
+        if (metaParam && metaParam.options && metaParam.options.length > 0) {
+          // Check if current value is a file path or quoted string
+          // If so, don't override with dropdown options (user specified a custom value)
+          const currentVal = param.currentValue || '';
+          const isFilePath = currentVal.includes('/') || currentVal.includes('\\') || 
+                            currentVal.includes('"') || currentVal.includes("'") ||
+                            (currentVal.includes(':') && currentVal.length > 3); // e.g., "C:/..."
+          
+          if (isFilePath) {
+            // Keep as text input for file paths - don't add dropdown options
+            return param;
+          }
+          
+          // Check if options include <custom> or similar - means user can enter custom value
+          // In this case, if current value doesn't match any option, it's a custom value
+          const hasCustomOption = metaParam.options.some(opt => 
+            opt.includes('<custom>') || opt.includes('<file') || opt.includes('<path')
+          );
+          
+          // Filter out placeholder options like {ON|OFF}, <custom>, <file_path>
+          const validOptions = metaParam.options.filter(opt => 
+            !opt.includes('{') && !opt.includes('<') && opt.trim() !== ''
+          );
+          
+          // If there's a custom option and current value doesn't match valid options,
+          // treat it as a custom value (don't show dropdown)
+          if (hasCustomOption && currentVal) {
+            const matchesOption = validOptions.some(opt => 
+              opt.toUpperCase() === currentVal.toUpperCase()
+            );
+            if (!matchesOption) {
+              // Current value is custom - keep as text input
+              return param;
+            }
+          }
+          
+          if (validOptions.length > 0) {
+            return {
+              ...param,
+              validOptions: validOptions,
+              description: metaParam.description || param.description
+            };
+          }
+        }
+        return param;
+      });
+      
+      // If we have command metadata params but no detected params, create params from metadata
+      if (params.length === 0 && cmdParams.length > 0) {
+        // Extract current argument values from command
+        const argMatch = command.match(/\s+(.+)$/);
+        const argString = argMatch ? argMatch[1] : '';
+        
+        // Don't split on spaces inside quotes - handle quoted file paths
+        const argValues: string[] = [];
+        let currentArg = '';
+        let inQuotes = false;
+        for (const char of argString) {
+          if (char === '"' || char === "'") {
+            inQuotes = !inQuotes;
+            currentArg += char;
+          } else if ((char === ' ' || char === ',') && !inQuotes) {
+            if (currentArg.trim()) {
+              argValues.push(currentArg.trim());
+            }
+            currentArg = '';
+          } else {
+            currentArg += char;
+          }
+        }
+        if (currentArg.trim()) {
+          argValues.push(currentArg.trim());
+        }
+        
+        // Check if the argument looks like a file path - if so, don't add dropdown
+        const firstArg = argValues[0] || '';
+        const isFilePath = firstArg.includes('/') || firstArg.includes('\\') || 
+                          firstArg.includes('"') || firstArg.includes("'") ||
+                          (firstArg.includes(':') && firstArg.length > 3);
+        
+        if (!isFilePath) {
+          cmdParams.forEach((metaParam, idx) => {
+            if (metaParam.options && metaParam.options.length > 0) {
+              // Check if options include <custom> - means user can enter custom value
+              const hasCustomOption = metaParam.options.some(opt => 
+                opt.includes('<custom>') || opt.includes('<file') || opt.includes('<path')
+              );
+              
+              const validOptions = metaParam.options.filter(opt => 
+                !opt.includes('{') && !opt.includes('<') && opt.trim() !== ''
+              );
+              
+              // If there's a custom option and current value doesn't match valid options,
+              // treat it as a custom value (don't show dropdown)
+              const currentArgValue = argValues[idx] || '';
+              if (hasCustomOption && currentArgValue) {
+                const matchesOption = validOptions.some(opt => 
+                  opt.toUpperCase() === currentArgValue.toUpperCase()
+                );
+                if (!matchesOption) {
+                  // Current value is custom - skip adding dropdown
+                  return;
+                }
+              }
+              
+              if (validOptions.length > 0) {
+                params.push({
+                  position: idx,
+                  type: 'enumeration' as any,
+                  currentValue: argValues[idx] || validOptions[0],
+                  validOptions: validOptions,
+                  startIndex: 0,
+                  endIndex: 0,
+                  description: metaParam.description || metaParam.name
+                });
+              }
+            }
+          });
+        }
+      }
       
       // Store params for later use
       (this as any).detectedParams_ = params;
@@ -161,10 +292,18 @@ Blockly.Blocks['scpi_write'] = {
             return newValue;
           });
           
-          // Set the current value
+          // Set the current value - try exact match first, then case-insensitive
           try {
             if (param.validOptions.includes(currentValue)) {
               dropdown.setValue(currentValue);
+            } else {
+              // Try case-insensitive match
+              const match = param.validOptions.find(opt => 
+                opt.toUpperCase() === currentValue.toUpperCase()
+              );
+              if (match) {
+                dropdown.setValue(match);
+              }
             }
           } catch (e) {
             // Ignore setValue errors during initialization
@@ -187,6 +326,11 @@ Blockly.Blocks['scpi_write'] = {
           input.appendField(new Blockly.FieldLabelSerializable(param.description), `PARAM_DESC_${idx}`);
         }
       });
+      
+      // Force Blockly to recalculate block shape after adding inputs
+      if (this.rendered) {
+        this.render();
+      }
     } catch (error) {
       console.error('Error parsing SCPI command:', error);
     }

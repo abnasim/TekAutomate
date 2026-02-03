@@ -16,10 +16,71 @@ import { Download, Upload, FolderOpen, Trash2, ZoomIn, ZoomOut, ArrowLeft, Check
 import { BrowseCommandsModal } from '../BrowseCommandsModal';
 import { PythonCodeEditor } from '../PythonCodeEditor';
 import { TmDevicesCommandBrowser } from '../TmDevicesCommandBrowser';
+import { setCommandRegistry } from './utils/commandRegistry';
 import './BlocklyBuilder.css';
 
 // Import block definitions
 import './blocks';
+
+/**
+ * Custom Connection Checker that allows flexible type connections
+ * This mimics Python's behavior where any truthy value can be used in conditions
+ * For example: math_number can connect to if conditions (non-zero = true)
+ */
+class FlexibleConnectionChecker extends Blockly.ConnectionChecker {
+  /**
+   * Override type checks to allow any value-to-value connections
+   * This is more permissive than the default checker
+   */
+  doTypeChecks(a: Blockly.Connection, b: Blockly.Connection): boolean {
+    // Get the check arrays for both connections
+    const checkArrayA = a.getCheck();
+    const checkArrayB = b.getCheck();
+    
+    // If either connection has no type restrictions (null), allow connection
+    if (!checkArrayA || !checkArrayB) {
+      return true;
+    }
+    
+    // Check for any matching types
+    for (const typeA of checkArrayA) {
+      if (checkArrayB.includes(typeA)) {
+        return true;
+      }
+    }
+    
+    // FLEXIBLE BEHAVIOR: Allow Number to connect to Boolean inputs
+    // This mimics Python where any non-zero value is truthy
+    const hasNumber = checkArrayA.includes('Number') || checkArrayB.includes('Number');
+    const hasBoolean = checkArrayA.includes('Boolean') || checkArrayB.includes('Boolean');
+    if (hasNumber && hasBoolean) {
+      return true;
+    }
+    
+    // FLEXIBLE BEHAVIOR: Allow String to connect to Boolean inputs
+    // This mimics Python where non-empty strings are truthy
+    const hasString = checkArrayA.includes('String') || checkArrayB.includes('String');
+    if (hasString && hasBoolean) {
+      return true;
+    }
+    
+    // FLEXIBLE BEHAVIOR: Allow Array to connect to Boolean inputs
+    const hasArray = checkArrayA.includes('Array') || checkArrayB.includes('Array');
+    if (hasArray && hasBoolean) {
+      return true;
+    }
+    
+    // Default: no match found
+    return false;
+  }
+}
+
+// Register the custom connection checker
+Blockly.registry.register(
+  Blockly.registry.Type.CONNECTION_CHECKER,
+  'flexible',
+  FlexibleConnectionChecker
+);
 
 export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
   devices,
@@ -108,6 +169,14 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
   const crossTabCopyPasteRef = useRef<CrossTabCopyPaste | null>(null);
   const pluginsInitializedRef = useRef<boolean>(false);
 
+  // Populate command registry when commands change
+  // This allows SCPI blocks to access parameter options from the command database
+  useEffect(() => {
+    if (commands && commands.length > 0) {
+      setCommandRegistry(commands);
+    }
+  }, [commands]);
+
   // Initialize Blockly workspace
   useEffect(() => {
     if (!blocklyDiv.current || workspace) return;
@@ -140,6 +209,11 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
         },
         drag: true,
         wheel: true
+      },
+      // Use our custom flexible connection checker
+      // This allows Number/String to connect to Boolean inputs (Python-like truthy behavior)
+      plugins: {
+        connectionChecker: 'flexible'
       }
     });
 
@@ -183,6 +257,62 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
         pluginsInitializedRef.current = true;
       } catch (error) {
         console.warn('Plugin initialization warning:', error);
+      }
+      
+      // Register custom workspace context menu options
+      try {
+        // "Set All Blocks to Inline Inputs" option
+        Blockly.ContextMenuRegistry.registry.register({
+          displayText: () => '⬅️ Set All Blocks to Inline Inputs',
+          preconditionFn: (scope) => {
+            // Only show for workspace context menu (not block context menu)
+            if (scope.workspace && !scope.block) {
+              return 'enabled';
+            }
+            return 'hidden';
+          },
+          callback: (scope) => {
+            const workspace = scope.workspace;
+            if (!workspace) return;
+            
+            const allBlocks = workspace.getAllBlocks(false);
+            allBlocks.forEach((block: Blockly.Block) => {
+              if (block.setInputsInline) {
+                block.setInputsInline(true);
+              }
+            });
+          },
+          scopeType: Blockly.ContextMenuRegistry.ScopeType.WORKSPACE,
+          id: 'set_all_inline',
+          weight: 100
+        });
+        
+        // "Set All Blocks to External Inputs" option
+        Blockly.ContextMenuRegistry.registry.register({
+          displayText: () => '⬇️ Set All Blocks to External Inputs',
+          preconditionFn: (scope) => {
+            if (scope.workspace && !scope.block) {
+              return 'enabled';
+            }
+            return 'hidden';
+          },
+          callback: (scope) => {
+            const workspace = scope.workspace;
+            if (!workspace) return;
+            
+            const allBlocks = workspace.getAllBlocks(false);
+            allBlocks.forEach((block: Blockly.Block) => {
+              if (block.setInputsInline) {
+                block.setInputsInline(false);
+              }
+            });
+          },
+          scopeType: Blockly.ContextMenuRegistry.ScopeType.WORKSPACE,
+          id: 'set_all_external',
+          weight: 101
+        });
+      } catch (contextMenuError) {
+        console.warn('Context menu registration warning:', contextMenuError);
       }
     }
 
@@ -1013,19 +1143,16 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
     
     // If empty after sanitization, use default
     if (!clean) {
-      clean = 'workflow';
+      clean = 'tek_automation';
     }
     
-    // Add timestamp for uniqueness
+    // Add simple date stamp (YYYYMMDD format) - cleaner than full timestamp
     const now = new Date();
-    const timestamp = now.getFullYear().toString() +
+    const dateStamp = now.getFullYear().toString() +
       (now.getMonth() + 1).toString().padStart(2, '0') +
-      now.getDate().toString().padStart(2, '0') + '_' +
-      now.getHours().toString().padStart(2, '0') +
-      now.getMinutes().toString().padStart(2, '0') +
-      now.getSeconds().toString().padStart(2, '0');
+      now.getDate().toString().padStart(2, '0');
     
-    return `${clean}_${timestamp}.${extension}`;
+    return `${clean}_${dateStamp}.${extension}`;
   };
 
   // Handle export JSON - prompt for filename and save
@@ -1104,9 +1231,8 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
     }
 
     // Build context-rich prompt (let GPT reason, not constrain)
-    const prompt = `You are the TekAutomate Blockly XML Builder.
-
-Here is the current workspace state:
+    // Note: Don't include system prompt here - the Custom GPT already has it
+    const prompt = `Here is the current workspace state:
 
 --- CURRENT BLOCKLY XML ---
 ${currentXml || '<xml xmlns="https://developers.google.com/blockly/xml"></xml>'}
@@ -1759,17 +1885,54 @@ Instructions:
             }
             setCurrentTmDevicesBlock(null);
           } else if (workspace) {
-            // Create new tm_devices command block
-            // Need to create a tm_devices command block - for now, show instructions
-            // TODO: Create proper tm_devices command block dynamically
-            const confirmCreate = window.confirm(
-              `Create tm_devices command block?\n\nPath: ${pathStr}\nMethod: ${cmd.method}\nValue: ${cmd.value || 'none'}\n\nFor now, the path will be copied to clipboard. You can paste it into a tm_devices block.`
-            );
+            // Create new tm_devices command block directly
+            const method = cmd.method?.toLowerCase() || 'write';
+            const blockType = method === 'query' ? 'tm_devices_query' : 'tm_devices_write';
             
-            if (confirmCreate) {
-              // Copy to clipboard for now
-              navigator.clipboard.writeText(pathStr);
-              window.alert(`Path copied to clipboard: ${pathStr}\n\nYou can now paste this into a tm_devices command block.`);
+            try {
+              const newBlock = workspace.newBlock(blockType);
+              
+              // Set the PATH field
+              newBlock.setFieldValue(pathStr, 'PATH');
+              
+              // Set the VALUE field if provided and it's a write block
+              if (blockType === 'tm_devices_write' && cmd.value !== undefined && cmd.value !== '') {
+                newBlock.setFieldValue(cmd.value, 'VALUE');
+              }
+              
+              // Initialize and render the block
+              if ((newBlock as any).initSvg) {
+                (newBlock as any).initSvg();
+              }
+              if ((newBlock as any).render) {
+                (newBlock as any).render();
+              }
+              
+              // Position the block - find a good spot
+              const existingBlocks = workspace.getAllBlocks(false);
+              let yPos = 50;
+              if (existingBlocks.length > 0) {
+                // Find the lowest block and place below it
+                const lastBlock = existingBlocks[existingBlocks.length - 1];
+                const xy = lastBlock.getRelativeToSurfaceXY();
+                yPos = xy.y + 100;
+              }
+              newBlock.moveBy(50, yPos);
+              
+              // Try to connect to the last block if possible
+              if (existingBlocks.length > 0) {
+                const lastBlock = existingBlocks[existingBlocks.length - 1];
+                if (lastBlock.nextConnection && newBlock.previousConnection) {
+                  lastBlock.nextConnection.connect(newBlock.previousConnection);
+                }
+              }
+              
+              // Select the new block
+              if ((newBlock as any).select) {
+                (newBlock as any).select();
+              }
+            } catch (error) {
+              console.error('Failed to create tm_devices block:', error);
             }
           }
           setShowTmDevicesBrowser(false);
