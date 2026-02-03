@@ -2,7 +2,11 @@
 
 import * as Blockly from 'blockly';
 import { parseSCPI } from '../../../utils/scpiParser';
-import { detectEditableParameters } from '../../../utils/scpiParameterDetector';
+import { detectEditableParameters, replaceParameter } from '../../../utils/scpiParameterDetector';
+
+// Color constants for better differentiation
+const WRITE_COLOR = 160;  // Green-teal for Write commands (sending data)
+const QUERY_COLOR = 260;  // Purple for Query commands (receiving data)
 
 /**
  * SCPI Write Block with Parameter Dropdowns
@@ -12,26 +16,24 @@ import { detectEditableParameters } from '../../../utils/scpiParameterDetector';
 Blockly.Blocks['scpi_write'] = {
   init: function() {
     this.appendDummyInput('DEVICE_LABEL')
-        .appendField('📺 SCPI Write')
+        .appendField('✏️ SCPI Write')
         .appendField(new Blockly.FieldLabelSerializable('(scope)'), 'DEVICE_CONTEXT');
     
     // Command input
     this.appendDummyInput('COMMAND_INPUT')
         .appendField('Command:')
-        .appendField(new Blockly.FieldTextInput('CH1:SCALE 1.0'), 'COMMAND');
+        .appendField(new Blockly.FieldTextInput('CH1:SCALE 1.0', this.onCommandChange_.bind(this)), 'COMMAND');
     
     // Parameter inputs will be added dynamically
     this.parameterInputs_ = [];
     this.currentCommand_ = '';
+    this.isUpdating_ = false;
     
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
-    this.setColour(210);
-    this.setTooltip('Send SCPI command with editable parameters');
+    this.setColour(WRITE_COLOR);
+    this.setTooltip('Send SCPI command to instrument (Write = Set values)');
     this.setHelpUrl('');
-    
-    // Track workspace load state
-    this.workspaceLoadComplete_ = false;
     
     // Custom context menu
     this.customContextMenu = function(this: Blockly.Block, options: any[]) {
@@ -63,25 +65,46 @@ Blockly.Blocks['scpi_write'] = {
         text: '🔄 Refresh Parameters',
         enabled: true,
         callback: () => {
-          // Get block reference from workspace
           if (this.workspace) {
             const block = this.workspace.getBlockById(blockId);
             if (block && (block as any).updateParameters) {
+              (block as any).currentCommand_ = ''; // Force refresh
               (block as any).updateParameters();
             }
           }
         }
       });
     };
+    
+    // Initialize parameters after a short delay to ensure block is fully created
+    setTimeout(() => {
+      if (this && !this.isDisposed()) {
+        this.updateParameters();
+      }
+    }, 100);
+  },
+  
+  // Called when command field changes
+  onCommandChange_: function(newValue: string) {
+    // Schedule parameter update
+    setTimeout(() => {
+      if (this && !this.isDisposed()) {
+        this.updateParameters();
+      }
+    }, 50);
+    return newValue;
   },
   
   // Update parameter inputs based on current command
   updateParameters: function() {
+    if (this.isUpdating_) return;
+    
     const command = this.getFieldValue('COMMAND');
     if (!command || command === this.currentCommand_) {
       return; // No change
     }
     
+    this.isUpdating_ = true;
     this.currentCommand_ = command;
     
     // Remove existing parameter inputs
@@ -95,11 +118,28 @@ Blockly.Blocks['scpi_write'] = {
     // Parse command and detect parameters
     try {
       const parsed = parseSCPI(command);
-      const params = detectEditableParameters(parsed);
+      let params = detectEditableParameters(parsed);
       
       if (params.length === 0) {
+        this.isUpdating_ = false;
         return; // No parameters to show
       }
+      
+      // Update currentValue for each param based on actual command content
+      params = params.map(param => {
+        const actualValue = command.slice(param.startIndex, param.endIndex);
+        // If the command has a concrete value (not <x>), use that as currentValue
+        if (!actualValue.includes('<x>')) {
+          return {
+            ...param,
+            currentValue: actualValue
+          };
+        }
+        return param;
+      });
+      
+      // Store params for later use
+      (this as any).detectedParams_ = params;
       
       // Add parameter inputs
       params.forEach((param, idx) => {
@@ -108,42 +148,91 @@ Blockly.Blocks['scpi_write'] = {
         
         const input = this.appendDummyInput(inputName);
         const label = this.getParameterLabel(param, idx);
-        input.appendField(label + ':');
+        input.appendField('  ' + label + ':');
         
         // Create dropdown or text input based on parameter type
         if (param.validOptions && param.validOptions.length > 0) {
-          // Create dropdown
+          // Create dropdown with options
           const options: [string, string][] = param.validOptions.map(opt => [opt, opt]);
           const currentValue = param.currentValue || param.validOptions[0];
-          const dropdown = new Blockly.FieldDropdown(options as any);
-          dropdown.setValue(currentValue);
           
-          // When dropdown changes, update the command
-          dropdown.setValidator((newValue: string) => {
-            this.updateCommandWithParameter(param, newValue);
+          const dropdown = new Blockly.FieldDropdown(options as any, (newValue: string) => {
+            this.onParameterChange_(idx, newValue);
             return newValue;
           });
           
+          // Set the current value
+          try {
+            if (param.validOptions.includes(currentValue)) {
+              dropdown.setValue(currentValue);
+            }
+          } catch (e) {
+            // Ignore setValue errors during initialization
+          }
+          
           input.appendField(dropdown, `PARAM_VALUE_${idx}`);
         } else {
-          // Create text input
-          const textInput = new Blockly.FieldTextInput(param.currentValue || '');
-          
-          // When text changes, update the command
-          textInput.setValidator((newValue: string) => {
-            this.updateCommandWithParameter(param, newValue);
+          // Create text input for numeric/custom values
+          const currentValue = param.currentValue || '';
+          const textInput = new Blockly.FieldTextInput(currentValue, (newValue: string) => {
+            this.onParameterChange_(idx, newValue);
             return newValue;
           });
           
           input.appendField(textInput, `PARAM_VALUE_${idx}`);
         }
+        
+        // Add description hint if available
+        if (param.description && param.description.length < 30) {
+          input.appendField(new Blockly.FieldLabelSerializable(param.description), `PARAM_DESC_${idx}`);
+        }
       });
     } catch (error) {
       console.error('Error parsing SCPI command:', error);
     }
+    
+    this.isUpdating_ = false;
   },
   
-  // Get label for parameter
+  // Called when a parameter value changes
+  onParameterChange_: function(paramIdx: number, newValue: string) {
+    if (this.isUpdating_) return;
+    
+    const params = (this as any).detectedParams_;
+    if (!params || !params[paramIdx]) return;
+    
+    const param = params[paramIdx];
+    const currentCommand = this.getFieldValue('COMMAND');
+    
+    try {
+      const newCommand = replaceParameter(currentCommand, param, newValue);
+      if (newCommand !== currentCommand) {
+        this.isUpdating_ = true;
+        this.setFieldValue(newCommand, 'COMMAND');
+        this.currentCommand_ = newCommand;
+        
+        // Update the stored param's currentValue and indices
+        const parsed = parseSCPI(newCommand);
+        const newParams = detectEditableParameters(parsed);
+        if (newParams.length > 0) {
+          (this as any).detectedParams_ = newParams.map(p => {
+            const actualValue = newCommand.slice(p.startIndex, p.endIndex);
+            if (!actualValue.includes('<x>')) {
+              return { ...p, currentValue: actualValue };
+            }
+            return p;
+          });
+        }
+        
+        this.isUpdating_ = false;
+      }
+    } catch (error) {
+      console.error('Error updating command:', error);
+      this.isUpdating_ = false;
+    }
+  },
+  
+  // Get label for parameter based on type
   getParameterLabel: function(param: any, idx: number): string {
     if (param.mnemonicType) {
       switch (param.mnemonicType) {
@@ -156,48 +245,72 @@ Blockly.Blocks['scpi_write'] = {
         case 'search': return 'Search';
         case 'power': return 'Power';
         case 'source': return 'Source';
+        case 'digital_bit': return 'Digital Bit';
+        case 'zoom': return 'Zoom';
+        case 'plot': return 'Plot';
+        case 'histogram': return 'Histogram';
+        case 'mask': return 'Mask';
+        case 'callout': return 'Callout';
+        case 'area': return 'Area';
         default: return param.description || `Param ${idx + 1}`;
       }
     }
-    return param.description || `Param ${idx + 1}`;
-  },
-  
-  // Update command string when parameter changes
-  updateCommandWithParameter: function(param: any, newValue: string) {
-    const currentCommand = this.getFieldValue('COMMAND');
     
-    // Import replaceParameter utility
-    import('../../../utils/scpiParameterDetector').then(({ replaceParameter }) => {
-      const newCommand = replaceParameter(currentCommand, param, newValue);
-      this.setFieldValue(newCommand, 'COMMAND');
-    });
+    // Check for common argument types
+    if (param.type === 'numeric') {
+      // Try to infer label from command context
+      const command = this.getFieldValue('COMMAND') || '';
+      const upperCmd = command.toUpperCase();
+      if (upperCmd.includes('SCALE')) return 'Scale (V/div)';
+      if (upperCmd.includes('POSITION')) return 'Position';
+      if (upperCmd.includes('OFFSET')) return 'Offset';
+      if (upperCmd.includes('BANDWIDTH')) return 'Bandwidth';
+      if (upperCmd.includes('FREQUENCY')) return 'Frequency';
+      if (upperCmd.includes('AMPLITUDE')) return 'Amplitude';
+      if (upperCmd.includes('VOLTAGE')) return 'Voltage';
+      if (upperCmd.includes('CURRENT')) return 'Current';
+      if (upperCmd.includes('TIME')) return 'Time';
+      if (upperCmd.includes('DELAY')) return 'Delay';
+      if (upperCmd.includes('LEVEL')) return 'Level';
+      if (upperCmd.includes('THRESHOLD')) return 'Threshold';
+      return 'Value';
+    }
+    
+    return param.description || `Param ${idx + 1}`;
   },
   
   onchange: function(event: any) {
     if (!this.workspace || this.isInFlyout) return;
     
-    // Mark workspace as loaded
-    if (event.type === Blockly.Events.FINISHED_LOADING) {
-      (this as any).workspaceLoadComplete_ = true;
-      return;
+    // Update device context display
+    if (event.type === Blockly.Events.BLOCK_MOVE || 
+        event.type === Blockly.Events.BLOCK_CREATE ||
+        event.type === Blockly.Events.FINISHED_LOADING) {
+      this.updateDeviceContext_();
     }
-    
-    // Don't update during initial load
-    if (!(this as any).workspaceLoadComplete_) {
-      return;
+  },
+  
+  updateDeviceContext_: function() {
+    // Find device context from connected blocks
+    const context = this.getDeviceContext_();
+    const contextField = this.getField('DEVICE_CONTEXT');
+    if (contextField) {
+      contextField.setValue(`(${context})`);
     }
-    
-    // Update parameters when command changes
-    if (event.type === Blockly.Events.BLOCK_CHANGE && 
-        event.blockId === this.id && 
-        event.name === 'COMMAND') {
-      // Use setTimeout to ensure the field change is fully processed
-      setTimeout(() => {
-        if (this && !this.isDisposed() && (this as any).updateParameters) {
-          (this as any).updateParameters();
-        }
-      }, 50);
+  },
+  
+  getDeviceContext_: function(): string {
+    let currentBlock: Blockly.Block | null = this.getPreviousBlock();
+    while (currentBlock) {
+      if (currentBlock.type === 'set_device_context') {
+        return currentBlock.getFieldValue('DEVICE') || 'scope';
+      }
+      if (currentBlock.type === 'connect_scope') {
+        return currentBlock.getFieldValue('DEVICE_NAME') || 'scope';
+      }
+      currentBlock = currentBlock.getPreviousBlock();
     }
+    return 'scope';
   }
 };
 
@@ -208,15 +321,15 @@ Blockly.Blocks['scpi_write'] = {
 Blockly.Blocks['scpi_query'] = {
   init: function() {
     this.appendDummyInput('DEVICE_LABEL')
-        .appendField('📺 SCPI Query')
+        .appendField('❓ SCPI Query')
         .appendField(new Blockly.FieldLabelSerializable('(scope)'), 'DEVICE_CONTEXT');
     
-    // Command input
+    // Command input (no ? suffix - added automatically)
     this.appendDummyInput('COMMAND_INPUT')
         .appendField('Command:')
-        .appendField(new Blockly.FieldTextInput('*IDN'), 'COMMAND');
+        .appendField(new Blockly.FieldTextInput('*IDN', this.onCommandChange_.bind(this)), 'COMMAND');
     
-    // Variable input
+    // Variable input for storing result
     this.appendDummyInput('VARIABLE_INPUT')
         .appendField('Save to:')
         .appendField(new Blockly.FieldTextInput('result'), 'VARIABLE');
@@ -224,15 +337,13 @@ Blockly.Blocks['scpi_query'] = {
     // Parameter inputs will be added dynamically
     this.parameterInputs_ = [];
     this.currentCommand_ = '';
+    this.isUpdating_ = false;
     
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
-    this.setColour(230);
-    this.setTooltip('Query SCPI command with editable parameters');
+    this.setColour(QUERY_COLOR);
+    this.setTooltip('Query SCPI command from instrument (Query = Get values)');
     this.setHelpUrl('');
-    
-    // Track workspace load state
-    this.workspaceLoadComplete_ = false;
     
     // Custom context menu
     this.customContextMenu = function(this: Blockly.Block, options: any[]) {
@@ -263,63 +374,93 @@ Blockly.Blocks['scpi_query'] = {
       options.push({
         text: '🔄 Refresh Parameters',
         enabled: true,
-        callback: function() {
-          const workspace = this.workspace as Blockly.WorkspaceSvg;
-          const block = workspace.getBlockById(blockId);
-          if (block && (block as any).updateParameters) {
-            (block as any).updateParameters();
+        callback: () => {
+          if (this.workspace) {
+            const block = this.workspace.getBlockById(blockId);
+            if (block && (block as any).updateParameters) {
+              (block as any).currentCommand_ = ''; // Force refresh
+              (block as any).updateParameters();
+            }
           }
         }
       });
     };
+    
+    // Initialize parameters after a short delay
+    setTimeout(() => {
+      if (this && !this.isDisposed()) {
+        this.updateParameters();
+      }
+    }, 100);
   },
   
-  // Copy methods from scpi_write (they're defined first)
-  updateParameters: function() {
-    // Call the scpi_write updateParameters method
-    const writeBlock = Blockly.Blocks['scpi_write'] as any;
-    if (writeBlock && writeBlock.updateParameters) {
-      writeBlock.updateParameters.call(this);
+  // Reuse methods from scpi_write
+  onCommandChange_: (Blockly.Blocks['scpi_write'] as any).onCommandChange_,
+  updateParameters: (Blockly.Blocks['scpi_write'] as any).updateParameters,
+  onParameterChange_: (Blockly.Blocks['scpi_write'] as any).onParameterChange_,
+  getParameterLabel: (Blockly.Blocks['scpi_write'] as any).getParameterLabel,
+  updateDeviceContext_: (Blockly.Blocks['scpi_write'] as any).updateDeviceContext_,
+  getDeviceContext_: (Blockly.Blocks['scpi_write'] as any).getDeviceContext_,
+  
+  onchange: function(event: any) {
+    if (!this.workspace || this.isInFlyout) return;
+    
+    // Update device context display
+    if (event.type === Blockly.Events.BLOCK_MOVE || 
+        event.type === Blockly.Events.BLOCK_CREATE ||
+        event.type === Blockly.Events.FINISHED_LOADING) {
+      this.updateDeviceContext_();
     }
-  },
-  getParameterLabel: function(param: any, idx: number) {
-    const writeBlock = Blockly.Blocks['scpi_write'] as any;
-    if (writeBlock && writeBlock.getParameterLabel) {
-      return writeBlock.getParameterLabel.call(this, param, idx);
-    }
-    return `Param ${idx + 1}`;
-  },
-  updateCommandWithParameter: function(param: any, newValue: string) {
-    const writeBlock = Blockly.Blocks['scpi_write'] as any;
-    if (writeBlock && writeBlock.updateCommandWithParameter) {
-      writeBlock.updateCommandWithParameter.call(this, param, newValue);
-    }
+  }
+};
+
+/**
+ * Custom SCPI Command Block (for advanced users)
+ * Allows entering any raw SCPI command without parameter parsing
+ */
+Blockly.Blocks['custom_command'] = {
+  init: function() {
+    this.appendDummyInput('DEVICE_LABEL')
+        .appendField('⚡ Custom SCPI')
+        .appendField(new Blockly.FieldLabelSerializable('(scope)'), 'DEVICE_CONTEXT');
+    
+    this.appendDummyInput('COMMAND_INPUT')
+        .appendField('Raw:')
+        .appendField(new Blockly.FieldTextInput('*RST'), 'COMMAND');
+    
+    this.setPreviousStatement(true, null);
+    this.setNextStatement(true, null);
+    this.setColour(45); // Orange for custom/advanced
+    this.setTooltip('Send raw SCPI command (no parameter parsing)');
+    this.setHelpUrl('');
   },
   
   onchange: function(event: any) {
     if (!this.workspace || this.isInFlyout) return;
     
-    // Mark workspace as loaded
-    if (event.type === Blockly.Events.FINISHED_LOADING) {
-      (this as any).workspaceLoadComplete_ = true;
-      return;
+    if (event.type === Blockly.Events.BLOCK_MOVE || 
+        event.type === Blockly.Events.BLOCK_CREATE ||
+        event.type === Blockly.Events.FINISHED_LOADING) {
+      // Update device context
+      const context = this.getDeviceContext_();
+      const contextField = this.getField('DEVICE_CONTEXT');
+      if (contextField) {
+        contextField.setValue(`(${context})`);
+      }
     }
-    
-    // Don't update during initial load
-    if (!(this as any).workspaceLoadComplete_) {
-      return;
+  },
+  
+  getDeviceContext_: function(): string {
+    let currentBlock: Blockly.Block | null = this.getPreviousBlock();
+    while (currentBlock) {
+      if (currentBlock.type === 'set_device_context') {
+        return currentBlock.getFieldValue('DEVICE') || 'scope';
+      }
+      if (currentBlock.type === 'connect_scope') {
+        return currentBlock.getFieldValue('DEVICE_NAME') || 'scope';
+      }
+      currentBlock = currentBlock.getPreviousBlock();
     }
-    
-    // Update parameters when command changes
-    if (event.type === Blockly.Events.BLOCK_CHANGE && 
-        event.blockId === this.id && 
-        event.name === 'COMMAND') {
-      // Use setTimeout to ensure the field change is fully processed
-      setTimeout(() => {
-        if (this && !this.isDisposed() && (this as any).updateParameters) {
-          (this as any).updateParameters();
-        }
-      }, 50);
-    }
+    return 'scope';
   }
 };
