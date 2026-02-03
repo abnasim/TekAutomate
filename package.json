@@ -4,7 +4,7 @@
   "description": "Tektronix Script Generator",
   "private": true,
   "main": "public/electron.js",
-  "homepage": "./",
+  "homepage": "https://abnasim.github.io/TekAutomate",
   "dependencies": {
     "@blockly/plugin-cross-tab-copy-paste": "^8.0.7",
     "@blockly/plugin-scroll-options": "^7.0.8",

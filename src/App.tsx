@@ -1254,7 +1254,7 @@ function AppInner() {
           const batch = QUICK_LOAD_FILES.slice(i, i + batchSize);
           await Promise.all(batch.map(async (file) => {
             try {
-              const response = await fetch(`/commands/${file}`);
+              const response = await fetch(`${process.env.PUBLIC_URL}/commands/${file}`);
               if (!response.ok) return;
               const data: any = await response.json();
             
@@ -1734,7 +1734,7 @@ function AppInner() {
         const templates: Template[] = [];
         for (const file of TEMPLATE_FILES) {
           try {
-            const response = await fetch(`/templates/${file}`);
+            const response = await fetch(`${process.env.PUBLIC_URL}/templates/${file}`);
             if (!response.ok) {
               console.error(`Failed to fetch template ${file}: ${response.status}`);
               continue;
@@ -1770,7 +1770,7 @@ function AppInner() {
       setLazyLoading(true);
       
       try {
-        const response = await fetch(`/commands/${file}`);
+        const response = await fetch(`${process.env.PUBLIC_URL}/commands/${file}`);
         if (!response.ok) {
           console.error(`Failed to fetch ${file}`);
           setLazyLoading(false);

@@ -95,7 +95,7 @@ export const TriggerMascot: React.FC<TriggerMascotProps> = ({
     }
 
     // Load the animation SVG
-    fetch(`/mascot/trigger-${effectiveAnimation}.svg`)
+    fetch(`${process.env.PUBLIC_URL}/mascot/trigger-${effectiveAnimation}.svg`)
       .then(res => {
         if (!res.ok) throw new Error(`SVG not found: trigger-${effectiveAnimation}.svg`);
         return res.text();
