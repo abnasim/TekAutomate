@@ -204,8 +204,10 @@ const QUICK_LOAD_FILES = [
   'awg.json', // AWG arbitrary waveform generator commands
 ];
 
-// No lazy loading - all files loaded on startup for full parsing
-const LAZY_LOAD_FILES: string[] = [];
+// Large files loaded on-demand when user selects the device family (saves startup time)
+const LAZY_LOAD_FILES: string[] = [
+  'rsa.json', // RSA spectrum analyzer - 8500+ commands, load on demand
+];
 
 // All complete command files (for future use)
 // const COMPLETE_COMMAND_FILES = [...QUICK_LOAD_FILES];
@@ -219,6 +221,7 @@ const FILE_TO_DEVICE_FAMILY: Record<string, { id: string; label: string; icon: s
   'afg.json': { id: 'AFG', label: 'AFG Series', icon: '', description: 'Arbitrary function generator' },
   'smu.json': { id: 'SMU', label: 'SMU Series', icon: '', description: 'Source measure unit' },
   'awg.json': { id: 'AWG', label: 'AWG Series', icon: '', description: 'Arbitrary waveform generator' },
+  'rsa.json': { id: 'RSA', label: 'RSA Series', icon: '', description: 'Real-time spectrum analyzer', tooltip: 'RSA306B, RSA500A, RSA600A, SignalVu-PC' },
 };
 const TEMPLATE_FILES = ['basic.json', 'tm_devices.json', 'tekhsi.json', 'advanced.json'];
 const BLOCKLY_TEMPLATE_FILES = ['basic.json', 'tm_devices.json', 'screenshot.json', 'tekexpress.json', 'multi_device.json'];
@@ -1882,6 +1885,7 @@ function AppInner() {
     const familyToFile: Record<string, string> = {
       '4/5/6 Series': 'mso_2_4_5_6_7.json',
       'DPO/MSO 5k_7k_70K': 'MSO_DPO_5k_7k_70K.json',
+      'RSA': 'rsa.json',
     };
     
     const fileToLoad = familyToFile[selectedDeviceFamily];

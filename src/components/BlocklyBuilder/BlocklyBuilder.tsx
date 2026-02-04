@@ -151,6 +151,8 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
         'DPOJET': 'dpojet.json',
         'AFG': 'afg.json',
         'SMU': 'smu.json',
+        'AWG': 'awg.json',
+        'RSA': 'rsa.json',
       };
       
       const expectedFile = familyToFile[commandBrowserDeviceFamily];
