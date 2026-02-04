@@ -674,16 +674,17 @@ function detectArgumentParameter(
 }
 
 /**
- * Generate channel options (CH1-CH4, or CH1_DALL-CH4_DALL, etc.)
- * Note: CH<x> where <x> is ≥1, limited by number of channels (typically 4)
+ * Generate channel options (CH1-CH8, or CH1_DALL-CH8_DALL, etc.)
+ * Note: CH<x> where <x> is ≥1
+ * Modern MSO 4/5/6 series scopes support up to 8 analog channels
  * @param currentNum - Current channel number
  * @param suffix - Optional suffix like "_DALL", "_D0", etc.
  */
 function generateChannelOptions(currentNum: number, suffix: string = ''): string[] {
   const options: string[] = [];
-  // Channels: CH1-CH4 (typically 4 channels, but can be more)
-  // For digital groups, can be up to CH8
-  const maxChannels = suffix ? 8 : 4;
+  // Channels: CH1-CH8 (modern MSO 4/5/6 series support up to 8 channels)
+  // User can select the appropriate channel for their instrument
+  const maxChannels = 8;
   for (let i = 1; i <= maxChannels; i++) {
     options.push(`CH${i}${suffix}`);
   }
@@ -691,16 +692,16 @@ function generateChannelOptions(currentNum: number, suffix: string = ''): string
 }
 
 /**
- * Generate reference options (REF1-REF4, or REF1_DALL-REF4_DALL, etc.)
+ * Generate reference options (REF1-REF8, or REF1_DALL-REF8_DALL, etc.)
  * Note: REF<x> where <x> is ≥1
+ * Modern MSO 4/5/6 series scopes support up to 8 references
  * @param currentNum - Current reference number
  * @param suffix - Optional suffix like "_DALL", "_D0", etc.
  */
 function generateReferenceOptions(currentNum: number, suffix: string = ''): string[] {
   const options: string[] = [];
-  // References: REF1-REF4 (typically 4, but can be more)
-  // For digital groups, can be up to REF8
-  const maxRefs = suffix ? 8 : 4;
+  // References: REF1-REF8 (modern scopes support up to 8)
+  const maxRefs = 8;
   for (let i = 1; i <= maxRefs; i++) {
     options.push(`REF${i}${suffix}`);
   }

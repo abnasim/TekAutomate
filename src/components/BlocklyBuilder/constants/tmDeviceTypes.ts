@@ -1,5 +1,101 @@
 /* ===================== tm_devices Device Types and Drivers ===================== */
 
+// Channel count mapping for oscilloscope models
+// Format: driver name -> number of analog channels
+export const DEVICE_CHANNEL_COUNTS: Record<string, number> = {
+  // MSO 2 Series - 4 channels
+  'MSO2': 4,
+  'MSO2A': 4,
+  // MSO 4 Series - 4 or 6 channels
+  'MSO4': 4,
+  'MSO4B': 4,
+  'MSO44': 4,
+  'MSO44B': 4,
+  'MSO46': 6,
+  'MSO46B': 6,
+  // MSO 5 Series - 4, 6, or 8 channels
+  'MSO5': 4,
+  'MSO5B': 4,
+  'MSO5LP': 4,
+  'MSO54': 4,
+  'MSO54B': 4,
+  'MSO56': 6,
+  'MSO56B': 6,
+  'MSO58': 8,
+  'MSO58B': 8,
+  // MSO 6 Series - 4, 6, or 8 channels
+  'MSO6': 8,  // Default to 8 for generic MSO6
+  'MSO6B': 8, // Default to 8 for generic MSO6B
+  'MSO64': 4,
+  'MSO64B': 4,
+  'MSO66': 6,
+  'MSO66B': 6,
+  'MSO68': 8,
+  'MSO68B': 8,
+  // Legacy DPO/MSO 5K/7K/70K - typically 4 channels
+  'DPO5K': 4,
+  'DPO7K': 4,
+  'DPO70K': 4,
+  'MSO70KDX': 4,
+  'MSO70KC': 4,
+  // MDO Series - 4 channels
+  'MDO3000': 4,
+  'MDO4000': 4,
+  'MDO4000B': 4,
+  'MDO4000C': 4,
+  // Default for unknown models
+  'default': 4
+};
+
+// Helper function to get channel count for a device driver
+export function getChannelCount(driver: string | undefined): number {
+  if (!driver) return DEVICE_CHANNEL_COUNTS['default'];
+  
+  // Try exact match first
+  if (DEVICE_CHANNEL_COUNTS[driver]) {
+    return DEVICE_CHANNEL_COUNTS[driver];
+  }
+  
+  // Try uppercase
+  const upperDriver = driver.toUpperCase();
+  if (DEVICE_CHANNEL_COUNTS[upperDriver]) {
+    return DEVICE_CHANNEL_COUNTS[upperDriver];
+  }
+  
+  // Try to extract model number pattern (e.g., MSO68B -> check MSO68B, MSO68, MSO6B, MSO6)
+  // Pattern: MSO/DPO + optional digits + optional letter suffix
+  const match = driver.match(/^(MSO|DPO|MDO)(\d+)?([A-Z])?/i);
+  if (match) {
+    const prefix = match[1].toUpperCase();
+    const modelNum = match[2] || '';
+    const suffix = match[3]?.toUpperCase() || '';
+    
+    // Try progressively shorter matches
+    const variants = [
+      `${prefix}${modelNum}${suffix}`,  // MSO68B
+      `${prefix}${modelNum}`,            // MSO68
+      `${prefix}${suffix}`,              // MSO6B (if modelNum was part of it)
+    ];
+    
+    for (const variant of variants) {
+      if (DEVICE_CHANNEL_COUNTS[variant]) {
+        return DEVICE_CHANNEL_COUNTS[variant];
+      }
+    }
+  }
+  
+  return DEVICE_CHANNEL_COUNTS['default'];
+}
+
+// Generate channel options array for dropdowns
+export function generateChannelOptions(channelCount: number): [string, string][] {
+  const options: [string, string][] = [];
+  for (let i = 1; i <= channelCount; i++) {
+    options.push([`CH${i}`, `CH${i}`]);
+  }
+  return options;
+}
+
 export const TM_DEVICE_TYPES = {
   SCOPE: {
     label: 'Oscilloscope',

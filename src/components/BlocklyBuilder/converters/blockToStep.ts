@@ -106,9 +106,19 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
     case 'connect_scope': {
       const deviceName = block.getFieldValue('DEVICE_NAME') || 'scope';
       const deviceId = findDeviceId(deviceName);
-      const backend = block.getFieldValue('BACKEND') || 'pyvisa';
+      
+      // Get backend: prioritize device config, then block field, then default
+      // This ensures the configured backend is preserved during round-trip conversion
+      const deviceConfig = devices.find(d => 
+        d.alias === deviceName || 
+        d.id === deviceName ||
+        d.alias?.toLowerCase() === deviceName.toLowerCase() ||
+        d.id?.toLowerCase() === deviceName.toLowerCase()
+      );
+      const backend = deviceConfig?.backend || block.getFieldValue('BACKEND') || 'pyvisa';
+      
       const connType = block.getFieldValue('CONN_TYPE') || 'TCPIP';
-      const host = block.getFieldValue('HOST') || block.getFieldValue('IP') || '192.168.1.100';
+      const host = block.getFieldValue('HOST') || block.getFieldValue('IP') || deviceConfig?.host || '192.168.1.100';
       const visaBackend = block.getFieldValue('VISA_BACKEND_TYPE') || '@py';
       const timeout = block.getFieldValue('TIMEOUT_MS') || '5000';
       
@@ -701,6 +711,7 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
     
     case 'tm_devices_add_math': {
       const device = getDeviceForBinding();
+      const deviceName = device || 'scope';
       const mathNum = block.getFieldValue('MATH_NUM') || '1';
       const source = block.getFieldValue('SOURCE') || 'CH1';
       const step: Step = {
@@ -708,8 +719,10 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
         type: 'tm_device_command',
         label: `Add Math ${mathNum}: ${source}`,
         params: {
+          code: `${deviceName}.add_new_math("MATH${mathNum}", "${source}")`,
           commandPath: 'add_new_math',
-          args: `"MATH${mathNum}", "${source}"`
+          args: `"MATH${mathNum}", "${source}"`,
+          description: `Add Math ${mathNum} with source ${source}`
         }
       };
       if (device) {
@@ -720,6 +733,7 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
     
     case 'tm_devices_set_and_check': {
       const device = getDeviceForBinding();
+      const deviceName = device || 'scope';
       const command = block.getFieldValue('COMMAND') || '';
       const value = block.getFieldValue('VALUE') || '';
       const step: Step = {
@@ -727,8 +741,10 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
         type: 'tm_device_command',
         label: `Set & Check: ${command}`,
         params: {
+          code: `${deviceName}.set_and_check("${command}", "${value}")`,
           commandPath: 'set_and_check',
-          args: `"${command}", "${value}"`
+          args: `"${command}", "${value}"`,
+          description: `Set ${command} to ${value} and verify`
         }
       };
       if (device) {
@@ -739,14 +755,17 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
     
     case 'fastframe_enable': {
       const device = getDeviceForBinding();
+      const deviceName = device || 'scope';
       const state = block.getFieldValue('STATE') || 'ON';
       const step: Step = {
         id,
         type: 'tm_device_command',
         label: `FastFrame: ${state}`,
         params: {
+          code: `${deviceName}.commands.horizontal.fastframe.state.write("${state}")`,
           commandPath: 'commands.horizontal.fastframe.state.write',
-          args: `"${state}"`
+          args: `"${state}"`,
+          description: `Enable/disable FastFrame acquisition`
         }
       };
       if (device) {
@@ -757,14 +776,17 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
     
     case 'fastframe_set_count': {
       const device = getDeviceForBinding();
+      const deviceName = device || 'scope';
       const count = block.getFieldValue('COUNT') || '10';
       const step: Step = {
         id,
         type: 'tm_device_command',
         label: `FastFrame Count: ${count}`,
         params: {
+          code: `${deviceName}.commands.horizontal.fastframe.count.write(${count})`,
           commandPath: 'commands.horizontal.fastframe.count.write',
-          args: count
+          args: count,
+          description: `Set FastFrame count to ${count}`
         }
       };
       if (device) {
@@ -775,6 +797,7 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
     
     case 'fastframe_select_frame': {
       const device = getDeviceForBinding();
+      const deviceName = device || 'scope';
       const channel = block.getFieldValue('CHANNEL') || 'CH1';
       // Get frame value - could be a number or variable
       const frameInput = block.getInputTargetBlock('FRAME');
@@ -782,13 +805,16 @@ function convertBlockToStep(block: Blockly.Block, index: number, currentDevice: 
       if (frameInput) {
         frameValue = convertExpressionToPython(frameInput);
       }
+      const commandPath = `commands.horizontal.fastframe.selected.${channel.toLowerCase()}.write`;
       const step: Step = {
         id,
         type: 'tm_device_command',
         label: `Select Frame for ${channel}`,
         params: {
-          commandPath: `commands.horizontal.fastframe.selected.${channel.toLowerCase()}.write`,
-          args: frameValue
+          code: `${deviceName}.${commandPath}(${frameValue})`,
+          commandPath: commandPath,
+          args: frameValue,
+          description: `Select frame ${frameValue} for ${channel}`
         }
       };
       if (device) {

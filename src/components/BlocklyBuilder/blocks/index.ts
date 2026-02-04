@@ -16,3 +16,4 @@ import './logicBlockOverrides';  // Override standard logic blocks for flexible 
 // Export helper functions
 export { updateDeviceDropdowns } from './connectionBlocks';
 export { updateSCPIDeviceDropdowns } from './scpiBlocks';
+export { setActiveDeviceDriver, getActiveDeviceDriver } from './channelBlocks';

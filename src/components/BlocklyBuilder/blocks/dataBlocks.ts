@@ -1,6 +1,18 @@
 /* ===================== Data Blocks ===================== */
 
 import * as Blockly from 'blockly';
+import { getChannelCount, generateChannelOptions } from '../constants/tmDeviceTypes';
+import { getActiveDeviceDriver } from './channelBlocks';
+
+// Dynamic source dropdown generator for waveform blocks
+// Includes channels (based on device) plus MATH channels
+function dynamicSourceDropdown(): [string, string][] {
+  const channelCount = getChannelCount(getActiveDeviceDriver());
+  const options = generateChannelOptions(channelCount);
+  // Add MATH channels
+  options.push(['MATH1', 'MATH1'], ['MATH2', 'MATH2'], ['MATH3', 'MATH3'], ['MATH4', 'MATH4']);
+  return options;
+}
 
 // Save Waveform Block with expandable settings - Shows device context
 Blockly.Blocks['save_waveform'] = {
@@ -10,16 +22,7 @@ Blockly.Blocks['save_waveform'] = {
         .appendField(new Blockly.FieldLabelSerializable('(scope)'), 'DEVICE_CONTEXT');
     this.appendDummyInput()
         .appendField('Source:')
-        .appendField(new Blockly.FieldDropdown([
-          ['CH1', 'CH1'],
-          ['CH2', 'CH2'],
-          ['CH3', 'CH3'],
-          ['CH4', 'CH4'],
-          ['MATH1', 'MATH1'],
-          ['MATH2', 'MATH2'],
-          ['MATH3', 'MATH3'],
-          ['MATH4', 'MATH4']
-        ]), 'SOURCE');
+        .appendField(new Blockly.FieldDropdown(dynamicSourceDropdown), 'SOURCE');
     this.appendDummyInput()
         .appendField('Filename:')
         .appendField(new Blockly.FieldTextInput('waveform'), 'FILENAME');

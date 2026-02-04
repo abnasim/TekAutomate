@@ -21,6 +21,7 @@ import './BlocklyBuilder.css';
 
 // Import block definitions
 import './blocks';
+import { setActiveDeviceDriver } from './blocks';
 
 /**
  * Custom Connection Checker that allows flexible type connections
@@ -179,6 +180,19 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
       setCommandRegistry(commands);
     }
   }, [commands]);
+
+  // Update active device driver for dynamic channel dropdowns
+  // This sets the channel count based on the connected instrument model (e.g., MSO68B = 8 channels)
+  useEffect(() => {
+    if (devices && devices.length > 0) {
+      // Use the first scope device's driver for channel options
+      const scopeDevice = devices.find(d => d.deviceType === 'SCOPE');
+      const driver = scopeDevice?.deviceDriver || devices[0]?.deviceDriver;
+      setActiveDeviceDriver(driver);
+    } else {
+      setActiveDeviceDriver(undefined);
+    }
+  }, [devices]);
 
   // Initialize Blockly workspace
   useEffect(() => {
@@ -736,6 +750,7 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
     if (!workspace) return '';
 
     // Check which backends are used and collect tm_devices drivers
+    // PRIORITY 1: Check connect_scope blocks in workspace
     const allBlocks = workspace.getAllBlocks(false);
     const usedBackends = new Set<string>();
     const tmDevicesDrivers = new Set<string>();
@@ -752,6 +767,20 @@ export const BlocklyBuilder: React.FC<BlocklyBuilderProps> = ({
             if (driver) {
               tmDevicesDrivers.add(driver);
             }
+          }
+        }
+      }
+    }
+    
+    // PRIORITY 2: If no connect_scope blocks, fall back to device configuration
+    // This ensures code generation respects the configured backend even without explicit connect blocks
+    if (usedBackends.size === 0 && devices.length > 0) {
+      for (const device of devices) {
+        if (device.backend) {
+          usedBackends.add(device.backend);
+          // Collect tm_devices drivers from device config
+          if (device.backend === 'tm_devices' && device.deviceDriver) {
+            tmDevicesDrivers.add(device.deviceDriver);
           }
         }
       }
@@ -1607,9 +1636,9 @@ Instructions:
             Save File
           </button>
           <label className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium cursor-pointer flex items-center gap-1"
-                 title="Load workspace from file">
+                 title="Load template or workspace from file">
             <FolderOpen size={14} />
-            Load File
+            Load Template
             <input
               type="file"
               accept=".xml,.json"

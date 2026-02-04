@@ -2,13 +2,11 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   Trash2, Copy, Download, ChevronRight, ChevronLeft, AlertCircle, Settings, Search,
   Upload, Folder, Zap, X, Undo2, Redo2, FileJson, Code2, ChevronDown, ChevronUp,
-  RefreshCw, Star,
+  GitBranch, RefreshCw, Repeat,
   Monitor, Cpu, Battery, Gauge, Activity, Radio, ArrowUp, ArrowDown, Edit, GraduationCap, Plus, BookOpen, HelpCircle,
   // Better step icons
-  PlugZap, Unplug, Send, Timer, MessageSquare, HardDriveDownload, ShieldAlert, FolderOpen, Maximize2, Camera,
-  FolderInput, Sparkles, Check, ClipboardPaste
+  PlugZap, Unplug, Send, Timer, MessageSquare, HardDriveDownload, ShieldAlert, FolderOpen, Maximize2
 } from 'lucide-react';
-import JSZip from 'jszip';
 import { BlocklyBuilder } from './components/BlocklyBuilder';
 import { ContextMenu, ContextMenuItem } from './components/ContextMenu';
 import { parseSCPI } from './utils/scpiParser';
@@ -25,12 +23,10 @@ import { TriggerMascot, useTriggerMascot, TriggerAnimation } from './components/
 import { AcademyProvider, AcademyModal, useHelp } from './components/Academy';
 import { PythonCodeEditor } from './components/PythonCodeEditor';
 import { BrowseCommandsModal } from './components/BrowseCommandsModal';
-import { TmDevicesCommandBrowser, TmDeviceCommand } from './components/TmDevicesCommandBrowser';
-import { SCPICommandTreeBuilder } from './components/SCPICommandTreeBuilder';
 
 /* ===================== Types ===================== */
 type Backend = 'pyvisa' | 'tm_devices' | 'vxi11' | 'tekhsi' | 'hybrid';
-type StepType = 'connect' | 'disconnect' | 'query' | 'write' | 'set_and_query' | 'sleep' | 'comment' | 'python' | 'save_waveform' | 'save_screenshot' | 'error_check' | 'group' | 'tm_device_command' | 'recall';
+type StepType = 'connect' | 'disconnect' | 'query' | 'write' | 'set_and_query' | 'sleep' | 'comment' | 'python' | 'save_waveform' | 'error_check' | 'group';
 type ConnectionType = 'tcpip' | 'socket' | 'usb' | 'gpib';
 
 interface InstrumentConfig {
@@ -45,7 +41,7 @@ interface InstrumentConfig {
   backend: Backend;
   timeout: number;
   modelFamily: string;
-  deviceType: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS' | 'TEKSCOPE_PC';
+  deviceType: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS';
   deviceDriver: string;
   alias: string;
   visaBackend: 'system' | 'pyvisa-py';
@@ -67,14 +63,12 @@ interface Step {
 interface Template {
   name: string;
   description: string;
-  steps?: Step[];
-  xml?: string;  // For Blockly templates
+  steps: Step[];
   backend?: Backend;
   category?: string;
   source?: string;
-  deviceType?: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS' | 'TEKSCOPE_PC';
+  deviceType?: 'SCOPE' | 'AWG' | 'AFG' | 'PSU' | 'SMU' | 'DMM' | 'DAQ' | 'MT' | 'MF' | 'SS';
   deviceDriver?: string;
-  builderType?: 'steps' | 'blockly';  // Which builder this template is for
 }
 
 interface CommandParam {
@@ -115,7 +109,6 @@ export interface CommandLibraryItem {
   manualEntry?: import('./types/scpi').ManualCommandEntry;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface CommandFile {
   category: string;
   subcategory?: string;
@@ -128,6 +121,17 @@ interface TemplateFile {
   category: string;
   templates: Template[];
 }
+
+type BrowseProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (command: CommandLibraryItem) => void;
+  commands: CommandLibraryItem[];
+  categoryColors: Record<string, string>;
+  selectedDeviceFamily?: string;
+  setSelectedDeviceFamily?: (family: string) => void;
+  deviceFamilies?: Array<{ id: string; label: string; icon: string; description: string; tooltip?: string }>;
+};
 
 type ExportOpts = {
   scriptName: string;
@@ -191,7 +195,12 @@ interface SignalBlock {
 }
 
 /* ===================== Constants ===================== */
-// Legacy COMMAND_FILES removed - all commands now loaded from QUICK_LOAD_FILES
+const COMMAND_FILES = [
+  'system.json', 'acquisition.json', 'horizontal.json', 'channels.json',
+  'trigger.json', 'data.json', 'display.json', 'dpojet.json',
+  'measurement.json', 'math.json', 'cursor.json', 'save-recall.json',
+  'waveform.json', 'awg.json', 'mso_commands.json' // Detailed format with full manual data
+];
 
 // All command files - loaded on startup (prioritize MSO files first for full parsing)
 const QUICK_LOAD_FILES = [
@@ -207,8 +216,8 @@ const QUICK_LOAD_FILES = [
 // No lazy loading - all files loaded on startup for full parsing
 const LAZY_LOAD_FILES: string[] = [];
 
-// All complete command files (for future use)
-// const COMPLETE_COMMAND_FILES = [...QUICK_LOAD_FILES];
+// All complete command files
+const COMPLETE_COMMAND_FILES = [...QUICK_LOAD_FILES];
 
 // Mapping of JSON files to device families
 const FILE_TO_DEVICE_FAMILY: Record<string, { id: string; label: string; icon: string; description: string; tooltip?: string }> = {
@@ -221,7 +230,6 @@ const FILE_TO_DEVICE_FAMILY: Record<string, { id: string; label: string; icon: s
   'awg.json': { id: 'AWG', label: 'AWG Series', icon: '', description: 'Arbitrary waveform generator' },
 };
 const TEMPLATE_FILES = ['basic.json', 'tm_devices.json', 'tekhsi.json', 'advanced.json'];
-const BLOCKLY_TEMPLATE_FILES = ['basic.json', 'tm_devices.json', 'screenshot.json', 'tekexpress.json', 'multi_device.json'];
 
 // tm_devices device types and drivers
 const TM_DEVICE_TYPES = {
@@ -264,10 +272,6 @@ const TM_DEVICE_TYPES = {
   SS: {
     label: 'Systems Switch',
     drivers: ['SS3706A']
-  },
-  TEKSCOPE_PC: {
-    label: 'TekScope PC',
-    drivers: ['TekScopePC']
   }
 };
 
@@ -277,13 +281,10 @@ const STEP_PALETTE = [
   { type: 'query' as StepType, label: 'Query', icon: HelpCircle, color: 'bg-blue-100 text-blue-700' },
   { type: 'write' as StepType, label: 'Write', icon: Send, color: 'bg-amber-100 text-amber-700' },
   { type: 'set_and_query' as StepType, label: 'Set+Query', icon: RefreshCw, color: 'bg-teal-100 text-teal-700' },
-  { type: 'tm_device_command' as StepType, label: 'tm_devices Command', icon: Zap, color: 'bg-purple-100 text-purple-700' },
-  { type: 'recall' as StepType, label: 'Recall', icon: FolderInput, color: 'bg-orange-100 text-orange-700' },
   { type: 'sleep' as StepType, label: 'Sleep', icon: Timer, color: 'bg-yellow-100 text-yellow-700' },
   { type: 'python' as StepType, label: 'Python', icon: Code2, color: 'bg-slate-100 text-slate-700' },
   { type: 'comment' as StepType, label: 'Comment', icon: MessageSquare, color: 'bg-gray-100 text-gray-700' },
-  { type: 'save_waveform' as StepType, label: 'Save Waveform', icon: HardDriveDownload, color: 'bg-indigo-100 text-indigo-700' },
-  { type: 'save_screenshot' as StepType, label: 'Save Screenshot', icon: Camera, color: 'bg-pink-100 text-pink-700' },
+  { type: 'save_waveform' as StepType, label: 'Save Data', icon: HardDriveDownload, color: 'bg-indigo-100 text-indigo-700' },
   { type: 'error_check' as StepType, label: 'Error Check', icon: ShieldAlert, color: 'bg-orange-100 text-orange-700' },
   { type: 'group' as StepType, label: 'Group', icon: FolderOpen, color: 'bg-gray-100 text-gray-700' }
 ];
@@ -877,21 +878,6 @@ const HelpDropdownAcademyButtonWrapper: React.FC<{ onClose: () => void }> = ({ o
   );
 };
 
-/* ===================== TekAcademy Header Button ===================== */
-const TekAcademyHeaderButton: React.FC = () => {
-  const { openArticle } = useHelp();
-  return (
-    <button 
-      onClick={() => openArticle()}
-      className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium flex items-center gap-1"
-      title="TekAcademy"
-    >
-      <BookOpen size={14} />
-      TekAcademy
-    </button>
-  );
-};
-
 /* ===================== App ===================== */
 function AppInner() {
   // Load config from localStorage on initialization
@@ -986,8 +972,6 @@ function AppInner() {
   const [runTour, setRunTour] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showSCPIHelp, setShowSCPIHelp] = useState(false);
-  const [showTmDevicesHelp, setShowTmDevicesHelp] = useState(false);
-  const [tmDevicesHelpInfo, setTmDevicesHelpInfo] = useState<{ code: string; path: string; method: string; model: string } | null>(null);
   const [showMascot, setShowMascot] = useState(false); // Hidden by default
   const [mascotTemporarilyShown, setMascotTemporarilyShown] = useState(false);
   
@@ -998,7 +982,6 @@ function AppInner() {
   const [past, setPast] = useState<Step[][]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [future, setFuture] = useState<Step[][]>([]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const commit = (next: Step[]) => { setPast((p) => [...p, steps]); setSteps(next); setFuture([]); };
   const undo = useCallback(() => {
     setPast((p) => {
@@ -1010,7 +993,6 @@ function AppInner() {
       return p.slice(0, -1);
     });
   }, [steps, triggerControls]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const redo = useCallback(() => {
     setFuture((f) => {
       if (!f.length) return f;
@@ -1044,8 +1026,7 @@ function AppInner() {
   const [showManageInstruments, setShowManageInstruments] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_showSettingsDropdown, _setShowSettingsDropdown] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_enableFlowDesigner, _setEnableFlowDesigner] = useState(() => {
+  const [enableFlowDesigner, setEnableFlowDesigner] = useState(() => {
     const saved = localStorage.getItem('enableFlowDesigner');
     return saved === 'true';
   });
@@ -1101,44 +1082,6 @@ function AppInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [showPopularOnly, setShowPopularOnly] = useState(false);
-  
-  // Popular commands - most commonly used SCPI commands
-  const popularCommands = useMemo(() => new Set([
-    // Acquisition
-    'ACQuire:MODe', 'ACQuire:NUMAVg', 'ACQuire:STOPAfter', 'ACQuire:STATE',
-    // Channels
-    'CH<x>:BANdwidth', 'CH<x>:COUPling', 'CH<x>:DISplay', 'CH<x>:LABel', 
-    'CH<x>:OFFSet', 'CH<x>:POSition', 'CH<x>:PRObe', 'CH<x>:SCAle', 'CH<x>:TERmination',
-    // Cursor
-    'CURSor:FUNCtion', 'CURSor:MODe', 'CURSor:SOUrce',
-    // Display
-    'DISplay:GLObal:CH<x>:STATE', 'DISplay:INTENSITy:BACKLight', 'DISplay:PERSistence',
-    'DISplay:WAVEView<x>:CURSor:CURSOR<x>:STATE',
-    // Front Panel
-    'FPAnel:PRESS', 'FPAnel:TURN',
-    // Horizontal
-    'HORizontal:DELay:MODe', 'HORizontal:DELay:TIMe', 'HORizontal:MODE', 
-    'HORizontal:POSition', 'HORizontal:RECOrdlength', 'HORizontal:SCAle',
-    // Math
-    'MATH<x>:DEFine', 'MATH<x>:DISplay', 'MATH<x>:LABel',
-    // Measurement
-    'MEASUrement:MEAS<x>:SOUrce', 'MEASUrement:MEAS<x>:TYPe', 'MEASUrement:MEAS<x>:VALue?',
-    'MEASUrement:IMMed:SOUrce1', 'MEASUrement:IMMed:TYPe', 'MEASUrement:IMMed:VALue?',
-    // Reference
-    'REF<x>:DISplay', 'REF<x>:LABel',
-    // Save/Recall
-    'SAVe:IMAGe', 'SAVe:SETUp', 'SAVe:WAVEform', 'RECAll:SETUp',
-    // Trigger
-    'TRIGger:A:EDGE:COUPling', 'TRIGger:A:EDGE:SLOpe', 'TRIGger:A:EDGE:SOUrce',
-    'TRIGger:A:LEVel:CH<x>', 'TRIGger:A:MODe', 'TRIGger:A:TYPe',
-    // Waveform Transfer
-    'DATa:SOUrce', 'DATa:STARt', 'DATa:STOP', 'DATa:ENCdg', 'DATa:WIDth',
-    'CURVe?', 'WFMOutpre?',
-    // System
-    '*IDN?', '*RST', '*CLS', '*OPC?', '*WAI',
-    'AUTOSet', 'FACtory', 'LOCk', 'UNLock',
-  ]), []);
   const [selectedBackends, setSelectedBackends] = useState<string[]>([]);
   // Command Library infinite scroll state
   const [libraryVisibleCount, setLibraryVisibleCount] = useState(50);
@@ -1152,7 +1095,6 @@ function AppInner() {
   const [selectedDeviceFamily, setSelectedDeviceFamily] = useState<string>('4/5/6 Series');
   
   // Track which files were successfully loaded
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loadedFiles, setLoadedFiles] = useState<Set<string>>(new Set());
   
   // Available device families - show all configured families (large files will lazy load)
@@ -1182,16 +1124,7 @@ function AppInner() {
   }, [userTemplates]);
   const [showCommandBrowser, setShowCommandBrowser] = useState(false);
   const [commandBrowserCallback, setCommandBrowserCallback] = useState<((cmd: CommandLibraryItem) => void) | null>(null);
-  const [showTmDevicesBrowser, setShowTmDevicesBrowser] = useState(false);
-  const [tmDevicesBrowserCallback, setTmDevicesBrowserCallback] = useState<((cmd: TmDeviceCommand) => void) | null>(null);
-  const [templateTab, setTemplateTab] = useState<'builtin' | 'blockly' | 'tekexpress' | 'user'>('builtin');
-  const [blocklyTemplates, setBlocklyTemplates] = useState<Template[]>([]);
-
-  // Steps UI AI Builder state
-  const [showStepsAIPromptInput, setShowStepsAIPromptInput] = useState(false);
-  const [stepsAIPromptText, setStepsAIPromptText] = useState('');
-  const [stepsAIPromptCopied, setStepsAIPromptCopied] = useState(false);
-  const [showStepsAIFallback, setShowStepsAIFallback] = useState(false);
+  const [templateTab, setTemplateTab] = useState<'builtin' | 'tekexpress' | 'user'>('builtin');
 
   const [exportOpen, setExportOpen] = useState(false);
   const [xopt, setXopt] = useState<ExportOpts>({
@@ -1216,25 +1149,12 @@ function AppInner() {
   // Check if welcome wizard should be shown on first launch
   useEffect(() => {
     const hasSeenWizard = localStorage.getItem('tekautomate_wizard_shown');
-    // Debug: log localStorage state
-    console.log('TekAutomate localStorage check:', {
-      hasSeenWizard,
-      origin: window.location.origin,
-      allKeys: Object.keys(localStorage).filter(k => k.startsWith('tekautomate'))
-    });
     if (!hasSeenWizard) {
       setShowWelcomeWizard(true);
     }
   }, []);
 
-  // Track if data has been loaded to prevent double-loading in React StrictMode
-  const dataLoadedRef = useRef(false);
-  
   useEffect(() => {
-    // Prevent double-loading in React 18 StrictMode
-    if (dataLoadedRef.current) return;
-    dataLoadedRef.current = true;
-    
     const loadData = async () => {
       try {
         setLoading(true);
@@ -1242,30 +1162,19 @@ function AppInner() {
         const colors: Record<string, string> = {};
         const loadedCommandIds = new Set<string>(); // Track normalized command headers
         
-        // Preload tm_devices docstrings in the background (non-blocking)
-        import('./utils/tmDevicesDocstrings').then(({ preloadDocstrings }) => {
-          preloadDocstrings().catch(err => {
-            console.debug('Failed to preload docstrings:', err);
-          });
-        });
-        
-        // STEP 1: Load QUICK command files in parallel batches for faster startup
+        // STEP 1: Load QUICK command files only (small files for fast startup)
         const successfullyLoadedFiles = new Set<string>();
         
-        // Load files in parallel batches (3 at a time to avoid overwhelming)
-        const batchSize = 3;
-        for (let i = 0; i < QUICK_LOAD_FILES.length; i += batchSize) {
-          const batch = QUICK_LOAD_FILES.slice(i, i + batchSize);
-          await Promise.all(batch.map(async (file) => {
-            try {
-              const response = await fetch(`${process.env.PUBLIC_URL}/commands/${file}`);
-              if (!response.ok) return;
-              const data: any = await response.json();
+        for (const file of QUICK_LOAD_FILES) {
+          try {
+            const response = await fetch(`/commands/${file}`);
+            if (!response.ok) continue;
+            const data: any = await response.json();
             
-              // Track successfully loaded file
-              successfullyLoadedFiles.add(file);
-              
-              // Check if it's the commands_by_section format or commands array format
+            // Track successfully loaded file
+            successfullyLoadedFiles.add(file);
+            
+            // Check if it's the commands_by_section format or commands array format
             if (data.commands_by_section) {
               // Standard format (mso_commands_complete.json)
               const result = loadCompleteCommandsFile(data);
@@ -1282,10 +1191,21 @@ function AppInner() {
               // Merge colors
               Object.assign(colors, result.colors);
               
-              // Silently loaded - summary logged at end
+              if (result.metadata) {
+                console.log(`Loaded ${result.commands.length} commands from ${file}`, {
+                  total: result.metadata.total_commands,
+                  sections: result.metadata.total_sections,
+                  equipment: result.metadata.equipment || result.metadata.source,
+                });
+              } else {
+                console.log(`Loaded ${result.commands.length} commands from ${file}`);
+              }
             } else if (data.groups && typeof data.groups === 'object') {
               // Groups format (mso_commands_extracted_v2.json cleaned version)
               // Load commands from groups
+              let addedCount = 0;
+              let enhancedCount = 0;
+              
               Object.entries(data.groups).forEach(([groupName, groupData]: [string, any]) => {
                 if (!groupData || !Array.isArray(groupData.commands)) return;
                 
@@ -1540,13 +1460,21 @@ function AppInner() {
                       name: newName ? shortDesc : existing.name,
                       manualEntry: commandItem.manualEntry || existing.manualEntry,
                     };
+                    enhancedCount++;
                   } else {
                     commands.push(commandItem);
                     loadedCommandIds.add(normalized);
+                    addedCount++;
                   }
                 });
               });
-              // Silently loaded - summary logged at end
+              
+              const totalCommands = Object.values(data.groups).reduce((sum: number, group: any) => 
+                sum + (Array.isArray(group.commands) ? group.commands.length : 0), 0);
+              console.log(`Loaded ${totalCommands} commands from ${file} (${addedCount} new, ${enhancedCount} enhanced)`, {
+                groups: Object.keys(data.groups).length,
+                metadata: data.metadata
+              });
             } else if (data.commands && Array.isArray(data.commands)) {
               // Enhanced format (mso_commands_final.json) or simple format (tekexpress.json, dpojet.json)
               // Load categories and colors
@@ -1564,6 +1492,9 @@ function AppInner() {
               }
               
               // Load commands - merge with existing or add new
+              let addedCount = 0;
+              let enhancedCount = 0;
+              
               data.commands.forEach((cmd: any) => {
                 const scpiCmd = cmd.scpi || cmd.header;
                 if (!scpiCmd) return;
@@ -1712,22 +1643,162 @@ function AppInner() {
                     // Merge manualEntry if it has more data
                     manualEntry: commandItem.manualEntry || commands[existingIndex].manualEntry,
                   };
+                  enhancedCount++;
                 } else {
                   // New command, add it
                   commands.push(commandItem);
                   loadedCommandIds.add(normalized);
+                  addedCount++;
                 }
               });
-              // Silently loaded - summary logged at end
+              
+              console.log(`Loaded ${data.commands.length} commands from ${file} (${addedCount} new, ${enhancedCount} enhanced)`);
             }
           } catch (err) {
             console.error(`Failed to load complete command file ${file}:`, err);
           }
-        }));
         }
         
-        // STEP 2: All commands now loaded from QUICK_LOAD_FILES above
-        // Legacy mso_commands.json and individual category files have been consolidated
+        // STEP 2: Load detailed mso_commands.json (for enhanced data)
+        try {
+          const msoResponse = await fetch('/commands/mso_commands.json');
+          if (msoResponse.ok) {
+            const msoData: any = await msoResponse.json();
+            
+            if (msoData.categories && Array.isArray(msoData.categories)) {
+              // Load categories and colors
+              msoData.categories.forEach((cat: any) => {
+                colors[cat.id || cat.name] = cat.color;
+              });
+              
+              // Merge detailed command data into existing commands
+              msoData.commands.forEach((cmd: any) => {
+                const scpiCmd = cmd.scpi || cmd.header;
+                const normalized = normalizeCommandHeader(scpiCmd);
+                
+                // Find existing command or create new one
+                const existingIndex = commands.findIndex(c => 
+                  normalizeCommandHeader(c.scpi) === normalized
+                );
+                
+                const categoryInfo = msoData.categories.find((c: any) => (c.id || c.name) === cmd.category);
+                
+                // Parse SCPI structure
+                const parsed = scpiCmd ? parseSCPI(scpiCmd) : undefined;
+                const editableParams = parsed ? detectEditableParameters(parsed) : undefined;
+                
+                // Map params from new format (cmd.params) or old format (cmd.arguments)
+                const mapParams = (params: any[]): CommandParam[] => {
+                  if (!Array.isArray(params)) return [];
+                  const normalizeType = (t: string): CommandParam['type'] => {
+                    const type = (t || '').toLowerCase();
+                    if (['enumeration', 'enum', 'boolean', 'bool'].includes(type)) return 'enumeration';
+                    if (['number', 'numeric', 'integer', 'floating_point', 'nr1', 'nr2', 'nr3', 'float'].includes(type)) return 'number';
+                    return 'text';
+                  };
+                  return params.map((param: any) => {
+                    // New format: { name, type, required, default, options, description }
+                    if (param.name && param.type) {
+                      return {
+                        name: param.name,
+                        type: normalizeType(param.type),
+                        default: param.default,
+                        required: param.required || false,
+                        options: param.options || param.validValues?.values || param.validValues?.examples || [],
+                        description: param.description,
+                      };
+                    }
+                    // Old format: { name, type, defaultValue, required, validValues }
+                    return {
+                      name: param.name,
+                      type: normalizeType(param.type),
+                      default: param.defaultValue,
+                      required: param.required,
+                      options: param.validValues?.values || param.validValues?.examples || [],
+                      min: param.validValues?.min,
+                      max: param.validValues?.max,
+                      unit: param.validValues?.unit,
+                      description: param.description,
+                    };
+                  });
+                };
+                
+                const enhancedCommand: CommandLibraryItem = {
+                  name: cmd.name || cmd.shortDescription || cmd.id || scpiCmd,
+                  scpi: scpiCmd,
+                  description: cmd.description || cmd.shortDescription || '',
+                  category: categoryInfo?.name || cmd.category || 'miscellaneous',
+                  subcategory: cmd.subcategory,
+                  params: mapParams(cmd.params || cmd.arguments || []),
+                  example: cmd.codeExamples?.[0]?.codeExamples?.python?.code || cmd.codeExamples?.[0]?.codeExamples?.scpi?.code,
+                  tekhsi: false,
+                  sourceFile: (cmd as any).sourceFile || 'mso_commands.json', // Preserve source file from original command or use mso_commands.json
+                  scpiStructure: parsed,
+                  editableParameters: editableParams,
+                  manualReference: cmd.manualReference,
+                  manualEntry: cmd as any,
+                };
+                
+                if (existingIndex >= 0) {
+                  // Merge with existing command (enhance it)
+                  commands[existingIndex] = {
+                    ...commands[existingIndex],
+                    ...enhancedCommand,
+                    // Keep original description if enhanced one is empty
+                    description: enhancedCommand.description || commands[existingIndex].description,
+                    // Keep source file if it exists
+                    sourceFile: enhancedCommand.sourceFile || commands[existingIndex].sourceFile,
+                  };
+                } else {
+                  // New command, add it
+                  commands.push(enhancedCommand);
+                  loadedCommandIds.add(normalized);
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load mso_commands.json:', err);
+        }
+        
+        // STEP 3: Load legacy command files, skipping duplicates
+        for (const file of COMMAND_FILES) {
+          // Skip files we've already processed
+          if (file === 'mso_commands.json') continue;
+          
+          try {
+            const response = await fetch(`/commands/${file}`);
+            if (!response.ok) continue;
+            const data: any = await response.json();
+            
+            // Old format: { category: "...", color: "...", commands: [...] }
+            if (!data.categories) {
+              colors[data.category] = data.color;
+              data.commands.forEach((cmd: any) => {
+                const cmdScpi = cmd.scpi || '';
+                const normalized = normalizeCommandHeader(cmdScpi);
+                
+                // Skip if already loaded from complete or detailed files
+                if (loadedCommandIds.has(normalized)) {
+                  return; // Skip duplicate
+                }
+                
+                commands.push({ 
+                  ...cmd, 
+                  category: data.category, 
+                  subcategory: data.subcategory,
+                  tekhsi: data.category === 'TekHSI',
+                  scpiStructure: cmd.scpi ? parseSCPI(cmd.scpi) : undefined,
+                  editableParameters: cmd.scpi ? detectEditableParameters(parseSCPI(cmd.scpi)) : undefined,
+                });
+                
+                loadedCommandIds.add(normalized);
+              });
+            }
+          } catch (err) {
+            console.error(`Failed to load command file ${file}:`, err);
+          }
+        }
         
         setCommandLibrary(commands);
         
@@ -1735,43 +1806,23 @@ function AppInner() {
         setLoadedFiles(successfullyLoadedFiles);
         setCategoryColors(colors);
 
-        // Load Steps UI templates
         const templates: Template[] = [];
         for (const file of TEMPLATE_FILES) {
           try {
-            const response = await fetch(`${process.env.PUBLIC_URL}/templates/${file}`);
+            const response = await fetch(`/templates/${file}`);
             if (!response.ok) {
               console.error(`Failed to fetch template ${file}: ${response.status}`);
               continue;
             }
             const data: TemplateFile = await response.json();
-            // Mark all as Steps templates
-            templates.push(...data.templates.map(t => ({ ...t, builderType: 'steps' as const })));
+            console.log(`Loaded template file ${file}:`, data);
+            templates.push(...data.templates);
           } catch (err) {
             console.error(`Failed to load template file ${file}:`, err);
           }
         }
         setBuiltInTemplates(templates);
-        
-        // Load Blockly templates
-        const blocklyTemps: Template[] = [];
-        for (const file of BLOCKLY_TEMPLATE_FILES) {
-          try {
-            const response = await fetch(`${process.env.PUBLIC_URL}/templates/blockly/${file}`);
-            if (!response.ok) {
-              console.error(`Failed to fetch Blockly template ${file}: ${response.status}`);
-              continue;
-            }
-            const data: TemplateFile = await response.json();
-            // Mark all as Blockly templates
-            blocklyTemps.push(...data.templates.map(t => ({ ...t, builderType: 'blockly' as const })));
-          } catch (err) {
-            console.error(`Failed to load Blockly template file ${file}:`, err);
-          }
-        }
-        setBlocklyTemplates(blocklyTemps);
-        
-        console.log(`TekAutomate loaded: ${commands.length} commands, ${templates.length} Steps templates, ${blocklyTemps.length} Blockly templates`);
+        console.log(`Total templates loaded: ${templates.length}`);
         setLoading(false);
         if (commands.length === 0) setLoadError('No commands loaded. Check public/commands and public/templates.');
       } catch (err) {
@@ -1795,7 +1846,7 @@ function AppInner() {
       setLazyLoading(true);
       
       try {
-        const response = await fetch(`${process.env.PUBLIC_URL}/commands/${file}`);
+        const response = await fetch(`/commands/${file}`);
         if (!response.ok) {
           console.error(`Failed to fetch ${file}`);
           setLazyLoading(false);
@@ -1928,13 +1979,10 @@ function AppInner() {
         type === 'query' ? { command: '*IDN?', cmdParams: [], paramValues: {} } :
         type === 'write' ? { command: '', cmdParams: [], paramValues: {} } :
         type === 'set_and_query' ? { command: '', cmdParams: [], paramValues: {} } :
-        type === 'save_waveform' ? { source: 'CH1', filename: 'waveform.bin', command: '', width: 1, encoding: 'RIBinary', start: 1, stop: null, format: 'bin', performance: 'fastest' } :
-        type === 'save_screenshot' ? { filename: 'screenshot.png', scopeType: 'modern', method: 'pc_transfer' } :
+        type === 'save_waveform' ? { source: 'CH1', filename: 'data.bin', command: '', width: 1, encoding: 'RIBinary', start: 1, stop: null, format: 'bin' } :
         type === 'error_check' ? { command: 'ALLEV?' } :
         type === 'connect' ? { instrumentId: devices[0]?.id || '', instrumentIds: [], printIdn: false } :
         type === 'disconnect' ? { instrumentId: '', instrumentIds: [] } :
-        type === 'tm_device_command' ? { code: '', model: '', description: '' } :
-        type === 'recall' ? { recallType: 'FACTORY', filePath: '', reference: 'REF1' } :
         {},
       children: type === 'group' ? [] : undefined,
       collapsed: false
@@ -2099,7 +2147,6 @@ function AppInner() {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStep]);
 
   // Collect all saveAs variable names from steps (including nested groups)
@@ -2271,7 +2318,6 @@ function AppInner() {
 
   const toggleCategory = (category: string) => {
     setSelectedCategory(prev => prev === category ? null : category);
-    setShowPopularOnly(false); // Turn off Popular filter when selecting a category
     setLibraryVisibleCount(50); // Reset visible count when category changes
   };
   
@@ -2297,12 +2343,6 @@ function AppInner() {
   };
 
   const loadTemplateAppend = (template: Template) => {
-    // Only load Steps templates, not Blockly templates
-    if (!template.steps || template.builderType === 'blockly') {
-      window.alert('This template is for Blockly Builder. Use "Load in Blockly" button instead.');
-      return;
-    }
-    
     triggerControls.triggerAnimation('success');
     const reid = (s: Step): Step => ({
       ...s,
@@ -2343,7 +2383,6 @@ function AppInner() {
     }
     
     // Fallback: Check if template steps contain tm_devices commands (for backward compatibility)
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const hasTmDevicesCommands = (() => {
       const checkStep = (s: Step): boolean => {
         if (s.type === 'group' && s.children) {
@@ -2367,7 +2406,6 @@ function AppInner() {
     })();
     
     // Check if template steps contain TekHSI commands
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const hasTekHSICommands = (() => {
       const checkStep = (s: Step): boolean => {
         if (s.type === 'group' && s.children) {
@@ -2394,39 +2432,6 @@ function AppInner() {
     
     setSelectedStep(null);
     setCurrentView('builder');
-  };
-
-  // Load a Blockly template into the Blockly workspace
-  const loadBlocklyTemplate = (template: Template) => {
-    if (!template.xml) {
-      window.alert('This template does not have Blockly XML content');
-      return;
-    }
-    
-    // Set the Blockly workspace XML
-    setBlocklyWorkspace(template.xml);
-    
-    // Update device backend if specified
-    if (template.backend) {
-      const targetBackend = template.backend as Backend;
-      if (devices.length > 0) {
-        updateDevice(devices[0].id, {
-          backend: targetBackend,
-          deviceType: template.deviceType || devices[0].deviceType,
-          deviceDriver: template.deviceDriver || devices[0].deviceDriver
-        });
-      } else {
-        setConfig({
-          ...config,
-          backend: targetBackend,
-          deviceType: template.deviceType || config.deviceType,
-          deviceDriver: template.deviceDriver || config.deviceDriver
-        });
-      }
-    }
-    
-    // Switch to Blockly Builder view
-    setCurrentView('flow-designer');
   };
 
   const exportTemplate = (template: Template) => {
@@ -2928,7 +2933,6 @@ function AppInner() {
     const valueParam = paramDefs.find(p => p.name.toLowerCase() === 'value');
     const valueIsNumeric = valueParam && (valueParam.type === 'number' || valueParam.type === 'integer');
     
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const hasSpecificNumericParam = valueIsNumeric && paramDefs.some(p => {
       const pNameLower = p.name.toLowerCase();
       return pNameLower !== 'value' && 
@@ -3231,7 +3235,6 @@ function AppInner() {
     // This handles commands like BUS:B<x>:ARINC429A:BITRate where CUSTom requires :CUSTom suffix
     let needsCustomSuffix = false;
     sortedParamDefs.forEach(p => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const paramNameLower = p.name.toLowerCase();
       const value = paramValues[p.name] ?? 
                     paramValues[p.name.toLowerCase()] ?? 
@@ -3479,7 +3482,6 @@ function AppInner() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _hasTmDevicesHighLevelCommands = steps.some(stepUsesTmDevicesHighLevel);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const detectHybridMode = useCallback((items: Step[]): boolean => {
     let hasTekHSI = false;
     const scan = (arr: Step[]) => {
@@ -3597,67 +3599,13 @@ function AppInner() {
     }
     if (needsTekHSI) imports += `from tekhsi import TekHSIConnect\n`;
     
-    // Check if any step needs waveform saving (including nested in groups)
-    const checkNeedsWaveformHelper = (stepList: Step[]): boolean => {
-      for (const s of stepList) {
-        if (s.type === 'group' && s.children) {
-          if (checkNeedsWaveformHelper(s.children)) return true;
-        }
-        if (s.type === 'save_waveform') {
-          const cmd = (s.params.command || '').toUpperCase();
-          // Need helper for CURVe? or empty command (default binary transfer)
-          if (!cmd || cmd === 'CURVE?' || cmd.includes('CURVE')) return true;
-        }
-      }
-      return false;
-    };
-    const needsWaveformHelper = checkNeedsWaveformHelper(steps);
-    
-    const waveformHelper = needsWaveformHelper ? `
-def read_waveform_binary(inst, source='CH1', start=1, stop=None, width=1, encoding='RIBinary'):
-    """Reads waveform data with proper setup - FAST binary transfer."""
-    if stop is None:
-        try:
-            rec_len = int(inst.query('HORizontal:RECOrdlength?').strip())
-            stop = rec_len
-            print(f"  Queried record length: {rec_len:,} points")
-        except:
-            stop = 10000
-    
-    inst.write(f'DATa:SOUrce {source}')
-    inst.write(f'DATa:ENCdg {encoding}')
-    inst.write(f'WFMOutpre:BYT_Nr {width}')
-    inst.write('HEAD OFF')
-    inst.write(f'DATa:STARt {start}')
-    inst.write(f'DATa:STOP {stop}')
-    
-    num_points = stop - start + 1
-    expected_bytes = num_points * width
-    print(f"Configured: {source}, {num_points:,} points, {expected_bytes:,} bytes")
-    
-    old_timeout = inst.timeout
-    inst.timeout = 60000  # 60 seconds
-    
-    try:
-        import time
-        t0 = time.time()
-        data = inst.query_binary_values('CURVe?', datatype='B', container=bytes)
-        elapsed = time.time() - t0
-        rate_mbps = (len(data) / elapsed) / 1_000_000
-        print(f"  ✓ {len(data):,} bytes in {elapsed:.2f}s ({rate_mbps:.1f} MB/s)")
-        return {'num_points': num_points, 'width': width}, data
-    finally:
-        inst.timeout = old_timeout
-
-` : '';
-    
     const header = `#!/usr/bin/env python3
 """
 Generated by TekAutomate - Multi-Device Mode
 Devices: ${activeDevices.map(d => `${d.alias} (${d.backend})`).join(', ')}
 """
 ${imports}
-${waveformHelper}
+
 `;
 
     // Helper function to get device variable name
@@ -3717,8 +3665,7 @@ ${waveformHelper}
         connectionCode += `    devices['${alias}'].timeout = int(args.timeout * 1000)\n`;
         connectionCode += `    devices['${alias}'].write_termination = "\\n"\n`;
         connectionCode += `    devices['${alias}'].read_termination = None\n`;
-        connectionCode += `    ${alias} = devices['${alias}']  # Alias for direct access\n`;
-        connectionCode += `    print(f"✓ Connected ${alias}: {${alias}.query('*IDN?').strip()}")\n\n`;
+        connectionCode += `    print(f"✓ Connected {alias}: {devices['${alias}'].query('*IDN?').strip()}")\n\n`;
       } else if (backend === 'tm_devices') {
         const deviceType = device.deviceType?.toLowerCase() || 'scope';
         const deviceDriver = device.deviceDriver;
@@ -3735,13 +3682,11 @@ ${waveformHelper}
           // Without type hint (auto-detect)
           connectionCode += `    devices['${alias}'] = dm_${alias}.add_${deviceType}('${resourceStr}')\n`;
         }
-        connectionCode += `    ${alias} = devices['${alias}']  # Alias for direct access\n`;
-        connectionCode += `    print(f"✓ Connected ${alias}: {${alias}.model}")\n\n`;
+        connectionCode += `    print(f"✓ Connected ${alias}: {devices['${alias}'].model}")\n\n`;
       } else if (backend === 'vxi11') {
         connectionCode += `    devices['${alias}'] = vxi11.Instrument('${device.host}')\n`;
         connectionCode += `    devices['${alias}'].timeout = int(args.timeout * 1000)\n`;
-        connectionCode += `    ${alias} = devices['${alias}']  # Alias for direct access\n`;
-        connectionCode += `    print(f"✓ Connected ${alias}: {${alias}.ask('*IDN?')}")\n\n`;
+        connectionCode += `    print(f"✓ Connected ${alias}: {devices['${alias}'].ask('*IDN?')}")\n\n`;
       } else if (backend === 'tekhsi') {
         connectionCode += `    # TekHSI connection will be handled in context manager\n`;
         connectionCode += `    devices['${alias}_host'] = '${device.host}'\n\n`;
@@ -3764,27 +3709,6 @@ ${waveformHelper}
         if (s.type === 'comment') {
           const commentText = s.params.text || s.label || '';
           out += `${indent}# ${commentText}\n`;
-          continue;
-        }
-        if (s.type === 'tm_device_command') {
-          // Handle both code format and commandPath format
-          let code = s.params.code || '';
-          
-          // If no code but has commandPath, generate the code from commandPath
-          if (!code && s.params.commandPath) {
-            const deviceVar = getDeviceVar(s);
-            const args = s.params.args || '';
-            // commandPath format: "commands.horizontal.fastframe.state.write"
-            // Generate: deviceVar.commands.horizontal.fastframe.state.write(args)
-            code = `${deviceVar}.${s.params.commandPath}(${args})`;
-          }
-          
-          if (code) {
-            out += `${indent}${code}\n`;
-            if (s.params.description) {
-              out += `${indent}# ${s.params.description}\n`;
-            }
-          }
           continue;
         }
         
@@ -3830,187 +3754,9 @@ ${waveformHelper}
         } else if (s.type === 'python' && s.params?.code) {
           const code = s.params.code.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
           const lines = code.split('\n');
-          // eslint-disable-next-line no-loop-func
           lines.forEach((line: string) => {
             if (line.trim()) out += `${indent}${line}\n`;
           });
-        } else if (s.type === 'save_waveform') {
-          const deviceVar = getDeviceVar(s);
-          const isTmDevice = isTmDevicesDevice(deviceVar);
-          const source = (s.params.source || 'CH1').toUpperCase();
-          const fn = s.params.filename || 'waveform.csv';
-          // Infer format from filename extension if not explicitly set
-          let format = (s.params.format || '').toLowerCase();
-          if (!format || format === 'auto') {
-            if (fn.toLowerCase().endsWith('.csv')) format = 'csv';
-            else if (fn.toLowerCase().endsWith('.bin')) format = 'bin';
-            else if (fn.toLowerCase().endsWith('.wfm')) format = 'wfm';
-            else if (fn.toLowerCase().endsWith('.mat')) format = 'mat';
-            else format = 'csv';
-          }
-          
-          // Get device reference for code generation
-          const devRef = isTmDevice ? `devices['${deviceVar}'].visa_resource` : `devices['${deviceVar}']`;
-          
-          if (format === 'wfm' || format === 'mat') {
-            // WFM/MAT: Scope writes the file (SAVE:WAVEFORM) - full metadata, recallable
-            const ext = format === 'wfm' ? '.wfm' : '.mat';
-            const baseName = fn.replace(/\.(wfm|mat|bin|csv)$/i, '');
-            // Use /Temp/ which works on both Windows and Linux scopes
-            const scopeTempPath = '/Temp';
-            const scopePath = `${scopeTempPath}/${baseName}${ext}`;
-            out += `${indent}# Save ${source} as ${format.toUpperCase()} (scope-native with full metadata)\n`;
-            out += `${indent}# Ensure temp directory exists on scope\n`;
-            out += `${indent}try:\n`;
-            out += `${indent}    ${devRef}.write('FILESYSTEM:MKDIR "${scopeTempPath}"')\n`;
-            out += `${indent}except:\n`;
-            out += `${indent}    pass  # Directory may already exist\n`;
-            out += `${indent}# Wait for any pending operations (e.g., acquisition) to complete\n`;
-            out += `${indent}${devRef}.query('*OPC?')\n`;
-            out += `${indent}${devRef}.write('SAVE:WAVEFORM ${source},"${scopePath}"')\n`;
-            out += `${indent}${devRef}.query('*OPC?')  # Wait for save to complete\n`;
-            out += `${indent}# Download from scope to local\n`;
-            out += `${indent}${devRef}.write('FILESYSTEM:READFILE "${scopePath}"')\n`;
-            out += `${indent}data = ${devRef}.read_raw()\n`;
-            out += `${indent}pathlib.Path(${JSON.stringify(baseName + ext)}).write_bytes(data)\n`;
-            out += `${indent}print(f"  Saved ${source} as ${format.toUpperCase()}: ${baseName}${ext}")\n`;
-            out += `${indent}# Clean up scope temp file\n`;
-            out += `${indent}${devRef}.write('FILESYSTEM:DELETE "${scopePath}"')\n`;
-          } else if (format === 'csv' || format === 'ascii') {
-            // CSV: PC pulls data via CURVE?, scales with WFMOUTPRE
-            out += `${indent}# Save ${source} as CSV (PC transfer with scaling)\n`;
-            out += `${indent}${devRef}.write("DATA:SOURCE ${source}")\n`;
-            out += `${indent}${devRef}.write("DATA:ENCDG ASCII")\n`;
-            out += `${indent}x_incr = float(${devRef}.query("WFMOUTPRE:XINCR?").strip())\n`;
-            out += `${indent}x_zero = float(${devRef}.query("WFMOUTPRE:XZERO?").strip())\n`;
-            out += `${indent}y_mult = float(${devRef}.query("WFMOUTPRE:YMULT?").strip())\n`;
-            out += `${indent}y_off = float(${devRef}.query("WFMOUTPRE:YOFF?").strip())\n`;
-            out += `${indent}y_zero = float(${devRef}.query("WFMOUTPRE:YZERO?").strip())\n`;
-            out += `${indent}raw_data = ${devRef}.query("CURVE?").strip()\n`;
-            out += `${indent}raw_values = [int(v) for v in raw_data.split(',') if v.strip()]\n`;
-            out += `${indent}with open(${JSON.stringify(fn)}, 'w') as f:\n`;
-            out += `${indent}    f.write('Time (s),Amplitude (V)\\n')\n`;
-            out += `${indent}    for i, raw_val in enumerate(raw_values):\n`;
-            out += `${indent}        time_val = x_zero + i * x_incr\n`;
-            out += `${indent}        amplitude = (raw_val - y_off) * y_mult + y_zero\n`;
-            out += `${indent}        f.write(f'{time_val:.9e},{amplitude:.6e}\\n')\n`;
-            out += `${indent}print(f"  Saved {len(raw_values):,} points to ${fn}")\n`;
-          } else {
-            // BIN: PC pulls data via read_waveform_binary (fast, raw)
-            let binFn = fn.toLowerCase().endsWith('.csv') ? fn.replace(/\.csv$/i, '.bin') : fn;
-            out += `${indent}# Save ${source} as binary (fast PC transfer)\n`;
-            out += `${indent}preamble, data = read_waveform_binary(${devRef}, source='${source}')\n`;
-            out += `${indent}pathlib.Path(${JSON.stringify(binFn)}).write_bytes(data)\n`;
-            out += `${indent}print(f"  Saved {preamble['num_points']:,} points to ${binFn}")\n`;
-          }
-        } else if (s.type === 'save_screenshot') {
-          const deviceVar = getDeviceVar(s);
-          const isTmDevice = isTmDevicesDevice(deviceVar);
-          const fn = s.params.filename || 'screenshot.png';
-          const scopeType = s.params.scopeType || 'modern';
-          
-          // Check if device uses raw socket connection
-          const device = s.boundDeviceId 
-            ? activeDevices.find(d => d.id === s.boundDeviceId)
-            : activeDevices[0];
-          const isRawSocket = device?.connectionType === 'socket';
-          
-          // Get device reference for code generation
-          const devRef = isTmDevice ? `devices['${deviceVar}'].visa_resource` : `devices['${deviceVar}']`;
-          
-          out += `${indent}# Save screenshot\n`;
-          out += `${indent}import os\n`;
-          out += `${indent}os.makedirs('./screenshots', exist_ok=True)\n`;
-          
-          if (isRawSocket) {
-            // Raw socket mode - use helper/socket_instr.py for reliable screenshot capture
-            out += `${indent}# Raw socket screenshot using helper/socket_instr.py\n`;
-            out += `${indent}# NOTE: Requires socket_instr.py from helper/ folder\n`;
-            out += `${indent}from socket_instr import SocketInstr\n`;
-            out += `${indent}sock_scope = SocketInstr('${device?.host || '127.0.0.1'}', ${device?.port || 4000}, timeout=30)\n`;
-            out += `${indent}img_data = sock_scope.fetch_screen("C:/Temp/screenshot.png")\n`;
-            out += `${indent}pathlib.Path(${JSON.stringify('./screenshots/' + fn)}).write_bytes(img_data)\n`;
-            out += `${indent}sock_scope.close()\n`;
-            out += `${indent}print(f"Screenshot saved to ./screenshots/${fn} ({len(img_data):,} bytes)")\n`;
-          } else if (scopeType === 'modern') {
-            // Modern MSO 4/5/6 series - uses SAVE:IMAGE
-            out += `${indent}# Modern MSO 4/5/6 series screenshot via SAVE:IMAGE\n`;
-            out += `${indent}try:\n`;
-            out += `${indent}    ${devRef}.write('FILESYSTEM:MKDIR "/Temp"')\n`;
-            out += `${indent}except:\n`;
-            out += `${indent}    pass  # Directory may already exist\n`;
-            out += `${indent}${devRef}.write('SAVE:IMAGE:COMPOSITION NORMAL')\n`;
-            out += `${indent}${devRef}.write('SAVE:IMAGE "/Temp/screenshot.png"')\n`;
-            out += `${indent}${devRef}.query('*OPC?')  # Wait for save to complete\n`;
-            out += `${indent}old_timeout = ${devRef}.timeout\n`;
-            out += `${indent}${devRef}.timeout = 30000\n`;
-            out += `${indent}${devRef}.write('FILESYSTEM:READFILE "/Temp/screenshot.png"')\n`;
-            out += `${indent}data = ${devRef}.read_raw()\n`;
-            out += `${indent}${devRef}.timeout = old_timeout\n`;
-            out += `${indent}pathlib.Path(${JSON.stringify('./screenshots/' + fn)}).write_bytes(data)\n`;
-            out += `${indent}${devRef}.write('FILESYSTEM:DELETE "/Temp/screenshot.png"')\n`;
-            out += `${indent}print(f"Screenshot saved to ./screenshots/${fn}")\n`;
-          } else {
-            // Legacy 5k/7k/70k series - uses HARDCOPY
-            // Note: Legacy scopes typically need C:/TekScope path structure
-            out += `${indent}# Legacy 5k/7k/70k series screenshot via HARDCOPY\n`;
-            out += `${indent}try:\n`;
-            out += `${indent}    ${devRef}.write('FILESYSTEM:MKDIR "C:/TekScope"')\n`;
-            out += `${indent}except:\n`;
-            out += `${indent}    pass\n`;
-            out += `${indent}try:\n`;
-            out += `${indent}    ${devRef}.write('FILESYSTEM:MKDIR "C:/TekScope/Temp"')\n`;
-            out += `${indent}except:\n`;
-            out += `${indent}    pass\n`;
-            out += `${indent}${devRef}.write('HARDCOPY:PORT FILE')\n`;
-            out += `${indent}${devRef}.write('HARDCOPY:FORMAT PNG')\n`;
-            out += `${indent}${devRef}.write('HARDCOPY:FILENAME "C:/TekScope/Temp/screenshot.png"')\n`;
-            out += `${indent}${devRef}.write('HARDCOPY START')\n`;
-            out += `${indent}${devRef}.query('*OPC?')  # Wait for hardcopy to complete\n`;
-            out += `${indent}old_timeout = ${devRef}.timeout\n`;
-            out += `${indent}${devRef}.timeout = 30000\n`;
-            out += `${indent}${devRef}.write('FILESYSTEM:READFILE "C:/TekScope/Temp/screenshot.png"')\n`;
-            out += `${indent}data = ${devRef}.read_raw()\n`;
-            out += `${indent}${devRef}.timeout = old_timeout\n`;
-            out += `${indent}pathlib.Path(${JSON.stringify('./screenshots/' + fn)}).write_bytes(data)\n`;
-            out += `${indent}${devRef}.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')\n`;
-            out += `${indent}print(f"Screenshot saved to ./screenshots/${fn}")\n`;
-          }
-        } else if (s.type === 'recall') {
-          const deviceVar = getDeviceVar(s);
-          const isTmDevice = isTmDevicesDevice(deviceVar);
-          const devRef = isTmDevice ? `devices['${deviceVar}'].visa_resource` : `devices['${deviceVar}']`;
-          
-          const recallType = s.params.recallType || 'FACTORY';
-          const filePath = s.params.filePath || '';
-          const reference = s.params.reference || 'REF1';
-          
-          switch (recallType) {
-            case 'FACTORY':
-              out += `${indent}# Recall factory defaults\n`;
-              out += `${indent}${devRef}.write('RECALL:SETUP FACTORY')\n`;
-              out += `${indent}print("Recalled factory defaults")\n`;
-              break;
-              
-            case 'SETUP':
-              out += `${indent}# Recall setup (.SET) from ${filePath}\n`;
-              out += `${indent}${devRef}.write('RECALL:SETUP "${filePath}"')\n`;
-              out += `${indent}print("Recalled setup from ${filePath}")\n`;
-              break;
-              
-            case 'SESSION':
-              out += `${indent}# Recall session (.TSS) from ${filePath}\n`;
-              out += `${indent}${devRef}.write('RECALL:SESSION "${filePath}"')\n`;
-              out += `${indent}time.sleep(2)  # Wait for session to load\n`;
-              out += `${indent}print("Recalled session from ${filePath}")\n`;
-              break;
-              
-            case 'WAVEFORM':
-              out += `${indent}# Recall waveform to ${reference} from ${filePath}\n`;
-              out += `${indent}${devRef}.write('RECALL:WAVEFORM "${filePath}",${reference}')\n`;
-              out += `${indent}print("Recalled waveform to ${reference} from ${filePath}")\n`;
-              break;
-          }
         }
       }
       return out;
@@ -4060,8 +3806,7 @@ if __name__ == "__main__":
     );
     
     // Detect TekHSI commands - must check recursively through groups
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _hasTekHSICommands = (() => {
+    const hasTekHSICommands = (() => {
       const checkStep = (s: Step): boolean => {
         if (s.type === 'group' && s.children) {
           return s.children.some(checkStep);
@@ -4136,6 +3881,7 @@ Host: ${config.host}
 ${config.backend === 'tm_devices' && !config.deviceDriver ? 'Device Driver: Auto-detect' : config.backend === 'tm_devices' ? `Device Driver: ${config.deviceDriver}` : `Model: ${config.modelFamily}`}
 ${(config.backend === 'tekhsi' || config.backend === 'hybrid') && config.tekhsiDevice ? `TekHSI Device: ${config.tekhsiDevice}` : ''}
 ${hasTekExpress ? 'TekExpress: TEKEXP:* via port 5000' : ''}
+${hasTekHSICommands ? 'TekHSI: fast waveform on port 5000' : ''}
 """
 import argparse, time, pathlib
 ${hasTekExpress ? 'from time import sleep' : ''}
@@ -4388,13 +4134,11 @@ ${xopt.saveCsv || xopt.exportMeasurements || hasTekExpress ? 'import csv' : ''}
 
         let cmd = subst(s.params.command, s.params.cmdParams || [], s.params.paramValues || {});
         // Substitute sweep variable if in sweep context - replace ${varName} with {varName} for f-strings
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         let needsFString = false;
         if (sweepContext) {
           const varPattern = new RegExp(`\\$\\{${sweepContext.varName}\\}`, 'g');
           if (varPattern.test(cmd)) {
             cmd = cmd.replace(varPattern, `{${sweepContext.varName}}`);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             needsFString = true;
           }
         }
@@ -4501,27 +4245,14 @@ ${xopt.saveCsv || xopt.exportMeasurements || hasTekExpress ? 'import csv' : ''}
             out += `${ind}pathlib.Path(${JSON.stringify(fn)}).write_bytes(data)\n`;
             out += `${ind}log_cmd('FILESystem:READFile', data)\n`;
           } else if (format === 'csv') {
-            // Save as CSV format with proper scaling (measurement-grade)
-            out += `${ind}# Configure data source\n`;
-            out += `${ind}instrument.write("DATA:SOURCE ${source}")\n`;
-            out += `${ind}instrument.write("DATA:ENCDG ASCII")\n`;
-            out += `${ind}# Get waveform scaling parameters\n`;
-            out += `${ind}x_incr = float(instrument.ask("WFMOUTPRE:XINCR?"))\n`;
-            out += `${ind}x_zero = float(instrument.ask("WFMOUTPRE:XZERO?"))\n`;
-            out += `${ind}y_mult = float(instrument.ask("WFMOUTPRE:YMULT?"))\n`;
-            out += `${ind}y_off = float(instrument.ask("WFMOUTPRE:YOFF?"))\n`;
-            out += `${ind}y_zero = float(instrument.ask("WFMOUTPRE:YZERO?"))\n`;
-            out += `${ind}# Get raw waveform data\n`;
-            out += `${ind}raw_data = instrument.ask("CURVE?").strip()\n`;
-            out += `${ind}raw_values = [int(v) for v in raw_data.split(',') if v.strip()]\n`;
-            out += `${ind}# Write scaled CSV with proper headers\n`;
-            out += `${ind}with open(${JSON.stringify(fn)}, 'w') as f:\n`;
-            out += `${ind}    f.write('Time (s),Amplitude (V)\\n')\n`;
-            out += `${ind}    for i, raw_val in enumerate(raw_values):\n`;
-            out += `${ind}        time_val = x_zero + i * x_incr\n`;
-            out += `${ind}        amplitude = (raw_val - y_off) * y_mult + y_zero\n`;
-            out += `${ind}        f.write(f'{time_val:.9e},{amplitude:.6e}\\n')\n`;
-            out += `${ind}log_cmd('CURVE?', f'{len(raw_values)} points')\n`;
+            // Save as CSV format
+            out += `${ind}# Read waveform as ASCII/CSV\n`;
+            out += `${ind}instrument.write(":DATa:SOUrce ${source}")\n`;
+            out += `${ind}instrument.write(":WAVeform:FORMat ASCii")\n`;
+            out += `${ind}instrument.write(":WAVeform:DATA?")\n`;
+            out += `${ind}data = instrument.read()\n`;
+            out += `${ind}pathlib.Path(${JSON.stringify(fn)}).write_text(data)\n`;
+            out += `${ind}log_cmd('WAVeform:DATA?', data)\n`;
           } else {
             // Default: binary format
             out += `${ind}# Read waveform as binary\n`;
@@ -4649,28 +4380,15 @@ ${xopt.saveCsv || xopt.exportMeasurements || hasTekExpress ? 'import csv' : ''}
             out += `${ind}log_cmd('FILESystem:READFile', data)\n`;
             out += `${ind}print(f"  Saved .wfm file: {len(data):,} bytes")\n`;
           } else if (format === 'csv') {
-            // Save as CSV format with proper scaling (measurement-grade)
-            out += `${ind}# Configure data source\n`;
-            out += `${ind}scpi.write("DATA:SOURCE ${source}")\n`;
-            out += `${ind}scpi.write("DATA:ENCDG ASCII")\n`;
-            out += `${ind}# Get waveform scaling parameters\n`;
-            out += `${ind}x_incr = float(scpi.query("WFMOUTPRE:XINCR?").strip())\n`;
-            out += `${ind}x_zero = float(scpi.query("WFMOUTPRE:XZERO?").strip())\n`;
-            out += `${ind}y_mult = float(scpi.query("WFMOUTPRE:YMULT?").strip())\n`;
-            out += `${ind}y_off = float(scpi.query("WFMOUTPRE:YOFF?").strip())\n`;
-            out += `${ind}y_zero = float(scpi.query("WFMOUTPRE:YZERO?").strip())\n`;
-            out += `${ind}# Get raw waveform data\n`;
-            out += `${ind}raw_data = scpi.query("CURVE?").strip()\n`;
-            out += `${ind}raw_values = [int(v) for v in raw_data.split(',') if v.strip()]\n`;
-            out += `${ind}# Write scaled CSV with proper headers\n`;
-            out += `${ind}with open(${JSON.stringify(fn)}, 'w') as f:\n`;
-            out += `${ind}    f.write('Time (s),Amplitude (V)\\n')\n`;
-            out += `${ind}    for i, raw_val in enumerate(raw_values):\n`;
-            out += `${ind}        time_val = x_zero + i * x_incr\n`;
-            out += `${ind}        amplitude = (raw_val - y_off) * y_mult + y_zero\n`;
-            out += `${ind}        f.write(f'{time_val:.9e},{amplitude:.6e}\\n')\n`;
-            out += `${ind}log_cmd('CURVE?', f'{len(raw_values)} points')\n`;
-            out += `${ind}print(f"  Saved CSV: {len(raw_values):,} points to ${fn}")\n`;
+            // Save as CSV format
+            out += `${ind}# Read waveform as ASCII/CSV\n`;
+            out += `${ind}scpi.write(":DATa:SOUrce ${source}")\n`;
+            out += `${ind}scpi.write(":WAVeform:FORMat ASCii")\n`;
+            out += `${ind}scpi.write(":WAVeform:DATA?")\n`;
+            out += `${ind}data = scpi.read()\n`;
+            out += `${ind}pathlib.Path(${JSON.stringify(fn)}).write_text(data)\n`;
+            out += `${ind}log_cmd('WAVeform:DATA?', data)\n`;
+            out += `${ind}print(f"  Saved CSV: {len(data):,} bytes")\n`;
           } else {
             // Default: binary format (.bin)
             if (cmd.includes('FILESYSTEM:READFILE')) {
@@ -4724,7 +4442,6 @@ ${xopt.saveCsv || xopt.exportMeasurements || hasTekExpress ? 'import csv' : ''}
           const varPattern = new RegExp(`\\$\\{${sweepContext.varName}\\}`, 'g');
           if (varPattern.test(cmd)) {
             cmd = cmd.replace(varPattern, `{${sweepContext.varName}}`);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             needsFString = true;
           }
         }
@@ -5136,21 +4853,7 @@ if __name__ == "__main__":
         (s.params.command.includes('.commands.') || s.params.command.includes('.add_') || s.params.command.includes('.save_'))
       );
       
-      // Check for waveform steps (including nested in groups) that need read_waveform_binary
-      const checkWaveformStep = (stepList: Step[]): boolean => {
-        for (const s of stepList) {
-          if (s.type === 'group' && s.children) {
-            if (checkWaveformStep(s.children)) return true;
-          }
-          if (s.type === 'save_waveform') {
-            const cmd = (s.params.command || '').toUpperCase();
-            // Include helper for CURVe? or empty command (default binary transfer)
-            if (!cmd || cmd === 'CURVE?' || cmd.includes('CURVE')) return true;
-          }
-        }
-        return false;
-      };
-      const hasWaveformStep = checkWaveformStep(steps);
+      const hasWaveformStep = steps.some(s => s.type === 'save_waveform' && (!s.params.command || s.params.command === 'CURVe?'));
       
       // Build import statements - only import driver if specified (for type hinting)
       const driverImport = deviceDriver ? `from tm_devices.drivers import ${deviceDriver}\n` : '';
@@ -5185,9 +4888,9 @@ def main():
     
     print(f"Connecting via tm_devices to {args.address}...")
     with DeviceManager(verbose=True) as device_manager:
-        # Disable automatic reset on connect/disconnect - user controls when to reset
-        device_manager.setup_cleanup_enabled = False
-        device_manager.teardown_cleanup_enabled = False
+        # Enable resetting devices when connecting and closing
+        device_manager.setup_cleanup_enabled = True
+        device_manager.teardown_cleanup_enabled = True
         
         # Set VISA backend
         device_manager.visa_library = ${visaBackendImport}
@@ -5258,202 +4961,15 @@ if __name__ == "__main__":
     return "# Error: Unknown backend configuration";
   };
 
-  // Socket helper file content (from helper/socket_instr.py)
-  const SOCKET_INSTR_PY = `#!/usr/bin/env python
-'''
-Robust Socket methods with attempt to mimic common pyvisa methods and behaviors,
-along with easy to use functions such as read binary waveforms, and image fetching.
-Uses only python built-in modules for portability
-Tested on MDO3000/4000C and 2/3/4/5(B)/6(B) series platform scopes
-    
-    Disclaimer:
-    This program is a proof of concept and provided "As-is".
-    Its contents may be altered to suit different applications.
-
-    Tested using Python v3.10.5
-    Author: Steve Guerrero
-'''
-
-import socket
-import sys
-import re
-
-
-''' Methods for instrument socket connection and data transfer '''
-
-
-class SocketInstr(object):
-    def __init__(self, host, port, timeout=10):     # Initialization of socket object
-
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)     # AF_INET = IPV4, SOCK_STREAM = TCP
-        try:
-            self.socket.connect((host, port))   # Attempt connection to instrument (IPV4 address, socket port)
-            self.socket.setblocking(False)      # non-blocking is best for asynchronous communication
-            self.socket.settimeout(timeout)     # default timeout set to 10 seconds
-        except socket.error as msg:             # error checking
-            print("Error: could not create socket")
-            print("Description: " + str(msg))
-            sys.exit()
-
-    def close(self):   # socket closing function
-
-        self.socket.shutdown(socket.SHUT_RDWR)  # informs server (instrument) prior to closure
-        self.socket.close()
-
-    def read(self):         # socket data receive method, decodes to ASCII string
-
-        try:
-            resp = self.socket.recv(1024)       # default 1KiB
-            while resp[-1:] != b'\\n':           # check for EOL linefeed char
-                resp += self.socket.recv(1024)  # receive and append more data
-            resp = resp.decode('latin_1').strip()   # convert Bytes to string
-        except socket.error as msg:
-            print("Error: unable to recv()")
-            print("Description: " + str(msg))
-            sys.exit()
-        return resp  # return response from instrument
-
-    def write(self, scpi):  # Socket Write SCPI to instrument method, encodes string to bytes
-
-        scpi = f'{scpi}\\n'.encode('latin_1')    # convert string to Bytes prior to send
-        try:
-            self.socket.sendall(scpi)   # send Bytes
-        except socket.error as msg:
-            print("Error: send() failed")
-            print("Description: " + str(msg))
-            sys.exit()
-
-    def query(self, scpi):  # Socket Query SCPI from instrument, references both write and read functions
-
-        self.write(scpi)
-        resp = self.read()
-        return resp         # return response from instrument
-
-    def read_bytes(self, n_bytes):  # reads raw data, requires byte length as argument
-
-        raw_data = bytearray(n_bytes)  # Initialize byte array of N-length
-        mv = memoryview(raw_data)     # object 'raw_data' spliced for much faster manipulation. 'mv' points to 'raw_data' object in memory
-        try:
-            while n_bytes:     # While data remains
-                c = self.socket.recv_into(mv, n_bytes)   # recv n_bytes into mv, c = num bytes recvd
-                mv = mv[c:]     # appends n_bytes received to mv object
-                n_bytes -= c    # removes number of bytes read from mv
-        except socket.error as msg:
-            print("Error: unable to recv()")
-            print("Description: " + str(msg))
-            sys.exit()
-        return raw_data
-
-    def clear(self):        # behaves like pyvisa device.clear(), used for debugging
-        self.write('!d')    # device clear flag for supported instruments
-
-    ''' Instrument specific functions '''
-
-    def read_bin_wave(self):   # IEEE Binary block header parsing and waveform reading function, references read_bytes()
-
-        # first we need to read and parse binary block header by format represented by example: (#72500000[Bytes of binary data]\\n)
-        bin_header = self.read_bytes(18)           # first 18 Bytes should contain all binary block header information in any case, tested to 1 Gpts
-        byte_len = int(bin_header.decode('latin_1').strip()[1], base=16)        # 2nd character representing number of bytes, base 16 representation
-        num_bytes = int(bin_header.decode('latin_1').strip()[2:byte_len + 2])   # num_bytes of waveform data to read after header
-        rem = bin_header[byte_len + 2:]             # remaining bytes from header to be included in returned waveform data
-
-        wave_data = rem + self.read_bytes(num_bytes - len(rem) + 1)    # '+1' accounts for linefeed character
-        return wave_data[:-1]   # return waveform data without linefeed character
-
-    # Robust image fetch sequence for 2/3/4/5(B)/6(B) series platform
-
-    def dir_info(self):  # finds saved image directory
-        r = self.query('filesystem:ldir?')
-        a = re.findall(r'[^,;"]+', r)
-        b = [a[i:i + 5] for i in range(0, len(a), 5)]
-        return b
-
-    def get_file_size(self, file):  # gets file sizing from scope for correct read buffer sizing through socket
-        r = self.dir_info()
-        a = [i for i, x in enumerate(r) if x[0] == file]
-        if len(a) == 0:
-            p = self.query('filesystem:cwd?')
-            error_message = f'file "{file}" not found on scope (path: {p})'
-            raise Exception(error_message)
-        size = int(r[a[0]][2])
-        return size
-
-    def fetch_screen(self, temp_file):  # saves temp file on scope, retrieves it, then deletes it to save disk space.
-        """get screen from 5/6 series scope"""
-        self.write(f'save:image "{temp_file}"')
-        self.query('*opc?')
-        size = self.get_file_size(temp_file)
-        cmd = f'filesystem:readfile "{temp_file}"\\n'
-        self.socket.send(cmd.encode('latin_1'))
-        self.socket.send(b'!r\\n')  # Flag for scope read to buffer
-        dat = self.read_bytes(size)
-        r = self.socket.recv(512)
-        if r != b'\\n':
-            error_message = 'file bytes request did not end with linefeed. file likely corrupted'
-            raise Exception(error_message)
-        self.write(f'filesystem:delete "{temp_file}"')
-        self.query('*opc?')
-        return dat
-`;
-
-  // Check if any device uses socket connection (needs helper file)
-  const needsSocketHelper = useCallback(() => {
-    // Check if any enabled device uses socket connection
-    const hasSocketDevice = devices.some(d => d.enabled !== false && d.connectionType === 'socket');
-    // Check if any step is save_screenshot (which uses socket helper when socket connection)
-    const hasScreenshotStep = steps.some(s => s.type === 'save_screenshot');
-    return hasSocketDevice && hasScreenshotStep;
-  }, [devices, steps]);
-
-  const doExport = async () => {
+  const doExport = () => {
     triggerControls.thinking(); // Show thinking animation
     try {
       const code = generatePython();
-      const scriptName = xopt.scriptName || 'tek_automation.py';
-      
-      // Check if we need to bundle socket_instr.py
-      if (needsSocketHelper()) {
-        // Create ZIP with both files
-        const zip = new JSZip();
-        zip.file(scriptName, code);
-        zip.file('socket_instr.py', SOCKET_INSTR_PY);
-        
-        // Add a README for the bundle
-        const readme = `# TekAutomate Export Bundle
-
-This bundle contains:
-- ${scriptName} - Your automation script
-- socket_instr.py - Raw socket helper for high-performance screenshot capture
-
-## Usage
-1. Keep both files in the same directory
-2. Run: python ${scriptName}
-
-## Why socket_instr.py?
-When using socket connections, PyVISA can timeout during FILESYSTEM:READFILE operations.
-The socket_instr.py helper provides reliable binary transfer using raw sockets.
-
-Generated by TekAutomate
-`;
-        zip.file('README.txt', readme);
-        
-        // Generate and download ZIP
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const url = URL.createObjectURL(zipBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = scriptName.replace(/\.py$/, '_bundle.zip');
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        // Simple single file export
-        const blob = new Blob([code], { type: 'text/x-python' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = scriptName; a.click();
-        URL.revokeObjectURL(url);
-      }
-      
+      const blob = new Blob([code], { type: 'text/x-python' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = xopt.scriptName || 'tek_automation.py'; a.click();
+      URL.revokeObjectURL(url);
       // Show celebration animation after a short delay
       setTimeout(() => {
         triggerControls.celebrate();
@@ -5553,10 +5069,6 @@ Generated by TekAutomate
                       }
                       return fullCmd;
                     })()}
-                    {step.type === 'tm_device_command' && (
-                      step.params.code || 
-                      (step.params.commandPath ? `${step.params.commandPath}(${step.params.args || ''})` : 'No command set')
-                    )}
                     {step.type === 'sleep' && `${step.params.duration}s`}
                     {step.type === 'comment' && `# ${step.params.text || step.label || ''}`}
                     {step.type === 'python' && ((step.params.code || '').split('\n')[0] || '').trim()}
@@ -5648,26 +5160,9 @@ Generated by TekAutomate
   }, [searchQuery]);
 
   const filteredCommands = useMemo(() => {
-    const q = librarySearchDebounced.toLowerCase().trim();
+    const q = librarySearchDebounced.toLowerCase();
     
-    // Parse search keywords - split on spaces and colons, filter out stop words
-    const stopWords = new Set(['and', 'or', 'the', 'a', 'an', 'is', 'are', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'that', 'this', 'it']);
-    const searchKeywords = q.split(/[\s:]+/).filter(kw => kw && kw.length > 0 && !stopWords.has(kw));
-    
-    // For fuzzy matching - also create a version where numbers are replaced with <x> pattern
-    const normalizedQuery = q.replace(/[\s:]/g, '');
-    // Replace numbers with pattern to match <x> - e.g., "meas1ftype" -> "meas\\d*ftype" or match "<x>"
-    // First escape special regex characters to prevent invalid regex
-    const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const parameterizedQuery = escapedQuery.replace(/(\d+)/g, '(?:\\d+|<[xn]>)');
-    let parameterizedRegex: RegExp | null = null;
-    try {
-      parameterizedRegex = new RegExp(parameterizedQuery, 'i');
-    } catch {
-      // If regex creation fails, we'll skip parameterized matching
-    }
-    
-    const filtered = commandLibrary.filter((cmd) => {
+    return commandLibrary.filter((cmd) => {
       // STEP 1: Filter by device family (source file) - this is the PRIMARY filter
       // This ensures MSO commands only show when MSO is selected, DPO only when DPO is selected
       if (!isCommandCompatible(cmd)) {
@@ -5701,71 +5196,19 @@ Generated by TekAutomate
           ...(cmd.manualEntry?.examples?.map((ex: any) => `${ex.description || ''} ${ex.codeExamples?.scpi?.code || ''}`) || []),
         ].filter(Boolean).map(s => String(s).toLowerCase());
         
-        const combinedText = searchableFields.join(' ');
-        const normalizedText = combinedText.replace(/[\s:]/g, '');
-        
-        // Strategy 1: Fuzzy match - remove spaces/colons and check if query is substring
-        const matchesFuzzy = normalizedText.includes(normalizedQuery);
-        
-        // Strategy 2: Parameterized match - "MEAS1:FTYPe" should match "MEAS<x>:FTYPe"
-        // Replace numbers in query with pattern that matches <x> or numbers
-        const matchesParameterized = parameterizedRegex ? parameterizedRegex.test(normalizedText) : false;
-        
-        // Strategy 3: All keywords must be found (allows "MEAS type" to match "MEAS<x>:TYPe")
-        const matchesAllKeywords = searchKeywords.length > 0 && searchKeywords.every(keyword => {
-          const normalizedKeyword = keyword.replace(/[\s:]/g, '');
-          // Also try replacing numbers with <x> pattern
-          // First escape special regex characters, then replace numbers
-          const escapedKeyword = normalizedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const keywordWithParam = escapedKeyword.replace(/(\d+)/g, '(?:\\d+|<[xn]>)');
-          try {
-            const keywordRegex = new RegExp(keywordWithParam, 'i');
-            return combinedText.includes(keyword) || normalizedText.includes(normalizedKeyword) || keywordRegex.test(normalizedText);
-          } catch {
-            // If regex fails, fall back to simple string matching
-            return combinedText.includes(keyword) || normalizedText.includes(normalizedKeyword);
-          }
-        });
-        
-        if (!matchesFuzzy && !matchesParameterized && !matchesAllKeywords) {
+        const matchesSearch = searchableFields.some(field => field.includes(q));
+        if (!matchesSearch) {
           return false;
         }
       }
       
       return true;
     });
-    
-    // STEP 4: Filter by Popular if enabled
-    let result = filtered;
-    if (showPopularOnly) {
-      result = filtered.filter(cmd => {
-        // Check if command matches any popular command pattern
-        const scpiNormalized = cmd.scpi.replace(/\d+/g, '<x>');
-        return popularCommands.has(cmd.scpi) || popularCommands.has(scpiNormalized);
-      });
-    }
-    
-    // STEP 5: Sort results by command root (first mnemonic), then alphabetically within each root
-    return result.sort((a, b) => {
-      // Extract the first mnemonic (root) from each command
-      const aRoot = a.scpi.split(':')[0].replace(/<[xnXN]>/g, '').toUpperCase();
-      const bRoot = b.scpi.split(':')[0].replace(/<[xnXN]>/g, '').toUpperCase();
-      
-      // First sort by root
-      if (aRoot !== bRoot) {
-        return aRoot.localeCompare(bRoot);
-      }
-      
-      // Within same root, sort alphabetically by full SCPI command
-      return a.scpi.localeCompare(b.scpi);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commandLibrary, librarySearchDebounced, selectedCategory, selectedDeviceFamily, showPopularOnly, popularCommands]);
+  }, [commandLibrary, librarySearchDebounced, selectedCategory, selectedDeviceFamily]);
 
   // Infinite scroll for library view
   const visibleLibraryCommands = useMemo(() => 
     filteredCommands.slice(0, libraryVisibleCount),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [filteredCommands, libraryVisibleCount]
   );
   const hasMoreCommands = libraryVisibleCount < filteredCommands.length;
@@ -5774,28 +5217,6 @@ Generated by TekAutomate
   useEffect(() => {
     setLibraryVisibleCount(50);
   }, [librarySearchDebounced, selectedCategory, selectedDeviceFamily]);
-
-  // Auto-select command when there's an exact match in the search
-  useEffect(() => {
-    if (!librarySearchDebounced || filteredCommands.length === 0) return;
-    
-    const query = librarySearchDebounced.trim();
-    if (!query) return;
-    
-    // Normalize query: replace numbers with <x> pattern for matching
-    const normalizeForMatch = (s: string) => s.toLowerCase().replace(/\d+/g, '<x>').replace(/\s+/g, '');
-    const normalizedQuery = normalizeForMatch(query);
-    
-    // Find exact match - the command's SCPI pattern should match the normalized query
-    const exactMatch = filteredCommands.find(cmd => {
-      const normalizedScpi = normalizeForMatch(cmd.scpi);
-      return normalizedScpi === normalizedQuery;
-    });
-    
-    if (exactMatch) {
-      setSelectedLibraryCommand(exactMatch);
-    }
-  }, [librarySearchDebounced, filteredCommands]);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -6275,7 +5696,7 @@ Generated by TekAutomate
       <div className="h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <img 
-            src={`${process.env.PUBLIC_URL}/tek_logo.svg`}
+            src="/tek_logo.svg" 
             alt="Tektronix" 
             className="h-16 mb-8 mx-auto" 
           />
@@ -6343,16 +5764,10 @@ Generated by TekAutomate
         deviceFamilies={deviceFamilies}
       />
 
-      <TmDevicesCommandBrowser
-        isOpen={showTmDevicesBrowser}
-        onClose={() => setShowTmDevicesBrowser(false)}
-        onSelect={(cmd) => tmDevicesBrowserCallback && tmDevicesBrowserCallback(cmd)}
-      />
-
       <div className="bg-white border-b">
         <div className="px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={`${process.env.PUBLIC_URL}/tek_logo.svg`} alt="Tektronix" className="h-6" />
+            <img src="/tek_logo.svg" alt="Tektronix" className="h-6" />
             <h1 className="text-xl font-bold text-gray-900">TekAutomate</h1>
             <span className="text-xs text-gray-500">
               {commandLibrary.length} cmds • {builtInTemplates.length} templates
@@ -6364,13 +5779,7 @@ Generated by TekAutomate
               onClick={() => setCurrentView('builder')} 
               className={`px-3 py-1.5 rounded text-xs font-medium ${currentView === 'builder' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
             >
-              Steps Builder
-            </button>
-            <button 
-              onClick={() => setCurrentView('flow-designer')} 
-              className={`px-3 py-1.5 rounded text-xs font-medium ${currentView === 'flow-designer' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
-            >
-              Blockly Builder
+              Builder
             </button>
             <button 
               data-tour="commands-button"
@@ -6389,8 +5798,16 @@ Generated by TekAutomate
             >
               Templates
             </button>
+            {enableFlowDesigner && (
+              <button onClick={() => setCurrentView('flow-designer')} className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1 ${currentView === 'flow-designer' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
+                <GitBranch size={14} />
+                Blockly Builder
+              </button>
+            )}
             {currentView === 'builder' && (
               <>
+                <button onClick={undo} title="Ctrl+Z" className="px-3 py-1.5 bg-gray-100 rounded text-xs font-medium" data-tour="undo-button"><Undo2 size={14} className="inline mr-1" />Undo</button>
+                <button onClick={redo} title="Ctrl+Y" className="px-3 py-1.5 bg-gray-100 rounded text-xs font-medium" data-tour="redo-button"><Redo2 size={14} className="inline mr-1" />Redo</button>
                 <div 
                   className="relative"
                   onMouseEnter={() => setShowFlowDropdown(true)}
@@ -6440,48 +5857,6 @@ Generated by TekAutomate
                     }
                   }}
                 />
-                
-                {/* AI Builder for Steps UI */}
-                <button
-                  onClick={() => setShowStepsAIPromptInput(true)}
-                  className={`px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1 transition-colors ${
-                    stepsAIPromptCopied 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white'
-                  }`}
-                  title="Generate Steps JSON using AI"
-                >
-                  {stepsAIPromptCopied ? <Check size={14} /> : <Sparkles size={14} />}
-                  {stepsAIPromptCopied ? 'Copied!' : 'AI Builder'}
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      const text = await navigator.clipboard.readText();
-                      const parsed = JSON.parse(text);
-                      const incoming: Step[] = Array.isArray(parsed) ? parsed : parsed.steps || [];
-                      if (incoming.length === 0) {
-                        alert('No valid steps found in clipboard');
-                        return;
-                      }
-                      const replace = window.confirm(`Found ${incoming.length} steps. Replace current flow? Cancel = Append`);
-                      if (replace) {
-                        commit(incoming);
-                      } else {
-                        commit([...steps, ...incoming]);
-                      }
-                      triggerControls.triggerAnimation('success');
-                    } catch (err) {
-                      alert('Failed to parse JSON from clipboard. Make sure you copied valid JSON.');
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-medium flex items-center gap-1"
-                  title="Paste JSON from clipboard (from AI output)"
-                >
-                  <ClipboardPaste size={14} />
-                  Paste JSON
-                </button>
-                
                 <button 
                   data-tour="gen-code-button"
                   onClick={() => {
@@ -6493,14 +5868,13 @@ Generated by TekAutomate
                 >
                   <Code2 size={14} className="inline mr-1" />Gen Code
                 </button>
-                <TekAcademyHeaderButton />
                 <div 
                   className="relative"
                   onMouseEnter={() => setShowHelpDropdown(true)}
                   onMouseLeave={() => setShowHelpDropdown(false)}
                 >
                   <button className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium flex items-center gap-1" data-tour="help-dropdown">
-                    <HelpCircle size={14} />
+                    <GraduationCap size={14} />
                     Help
                     <ChevronDown size={12} />
                   </button>
@@ -6615,7 +5989,25 @@ Generated by TekAutomate
                     >
                       <Plus size={14} className="inline mr-1" />Instrument
                     </button>
-                    <button onClick={() => setShowConfig(false)} className="text-xs text-gray-500 hover:text-gray-700">Hide</button>
+                    {/* Beta Toggle */}
+                    <label className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 rounded cursor-pointer">
+                      <span className="font-medium">Beta</span>
+                      <input
+                        type="checkbox"
+                        checked={enableFlowDesigner}
+                        onChange={(e) => {
+                          const enabled = e.target.checked;
+                          setEnableFlowDesigner(enabled);
+                          localStorage.setItem('enableFlowDesigner', String(enabled));
+                          // If disabling and currently on flow-designer, switch to builder
+                          if (!enabled) {
+                            setCurrentView((prev) => prev === 'flow-designer' ? 'builder' : prev);
+                          }
+                        }}
+                        className="w-3.5 h-3.5 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                    </label>
+                    <button onClick={() => setShowConfig(false)} className="text-xs text-gray-500">Hide</button>
                   </div>
                 </div>
 
@@ -6718,21 +6110,6 @@ Generated by TekAutomate
                                           </span>
                                           <span className="text-xs font-mono text-gray-500 truncate min-w-[200px]">{visaResourceString}</span>
                                           
-                                          {/* Delete Device Button */}
-                                          {devices.length > 1 && (
-                                            <button
-                                              onClick={() => {
-                                                if (window.confirm(`Remove device "${device.alias}"?`)) {
-                                                  setDevices(prev => prev.filter(d => d.id !== device.id));
-                                                }
-                                              }}
-                                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                                              title="Remove device"
-                                            >
-                                              <X size={14} />
-                                            </button>
-                                          )}
-                                          
                                           {/* Connection */}
                                           <div className="flex items-center gap-1">
                                             <label className="text-xs font-medium whitespace-nowrap">Connection:</label>
@@ -6758,32 +6135,30 @@ Generated by TekAutomate
                                             </select>
                                           </div>
                                           
-                                          {/* Host/IP - for TCP/IP and Socket */}
+                                          {/* Host/IP and Port - only for TCP/IP and Socket */}
                                           {(device.connectionType === 'tcpip' || device.connectionType === 'socket') && (
-                                            <div className="flex items-center gap-1">
-                                              <label className="text-xs font-medium whitespace-nowrap">Host/IP:</label>
-                                              <input 
-                                                type="text" 
-                                                value={device.host} 
-                                                onChange={(e) => updateDeviceField('host', e.target.value)} 
-                                                className="w-24 px-1 py-0.5 text-xs border rounded" 
-                                                placeholder="192.168.0.1"
-                                              />
-                                            </div>
-                                          )}
-                                          
-                                          {/* Port - only for Socket, GPIB, and Serial (not for TCPIP INSTR) */}
-                                          {device.connectionType === 'socket' && (
-                                            <div className="flex items-center gap-1">
-                                              <label className="text-xs font-medium whitespace-nowrap">Port:</label>
-                                              <input 
-                                                type="number" 
-                                                value={device.port} 
-                                                onChange={(e) => updateDeviceField('port', parseInt(e.target.value || '4000', 10))} 
-                                                className="w-16 px-1 py-0.5 text-xs border rounded" 
-                                                placeholder="4000"
-                                              />
-                                            </div>
+                                            <>
+                                              <div className="flex items-center gap-1">
+                                                <label className="text-xs font-medium whitespace-nowrap">Host/IP:</label>
+                                                <input 
+                                                  type="text" 
+                                                  value={device.host} 
+                                                  onChange={(e) => updateDeviceField('host', e.target.value)} 
+                                                  className="w-24 px-1 py-0.5 text-xs border rounded" 
+                                                  placeholder="127.0.0.1"
+                                                />
+                                              </div>
+                                              <div className="flex items-center gap-1">
+                                                <label className="text-xs font-medium whitespace-nowrap">Port:</label>
+                                                <input 
+                                                  type="number" 
+                                                  value={device.port} 
+                                                  onChange={(e) => updateDeviceField('port', parseInt(e.target.value || '4000', 10))} 
+                                                  disabled={device.connectionType === 'tcpip'}
+                                                  className="w-16 px-1 py-0.5 text-xs border rounded disabled:bg-gray-100" 
+                                                />
+                                              </div>
+                                            </>
                                           )}
                                           
                                           {/* USB fields */}
@@ -6834,11 +6209,10 @@ Generated by TekAutomate
                                                   value={device.gpibBoard} 
                                                   onChange={(e) => updateDeviceField('gpibBoard', parseInt(e.target.value || '0', 10))} 
                                                   className="w-16 px-1 py-0.5 text-xs border rounded"
-                                                  placeholder="0"
                                                 />
                                               </div>
                                               <div className="flex items-center gap-1">
-                                                <label className="text-xs font-medium whitespace-nowrap">GPIB Address:</label>
+                                                <label className="text-xs font-medium whitespace-nowrap">Address:</label>
                                                 <input 
                                                   type="number" 
                                                   value={device.gpibAddress} 
@@ -6846,7 +6220,6 @@ Generated by TekAutomate
                                                   min={1} 
                                                   max={30} 
                                                   className="w-16 px-1 py-0.5 text-xs border rounded"
-                                                  placeholder="1"
                                                 />
                                               </div>
                                             </>
@@ -7105,19 +6478,6 @@ Generated by TekAutomate
                                               {device.backend}
                                             </span>
                                             <span className="text-xs font-mono text-gray-500 truncate flex-1 min-w-0">{visaResourceString}</span>
-                                            
-                                            {/* Delete Device Button */}
-                                            <button
-                                              onClick={() => {
-                                                if (window.confirm(`Remove device "${device.alias}"?`)) {
-                                                  setDevices(prev => prev.filter(d => d.id !== device.id));
-                                                }
-                                              }}
-                                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
-                                              title="Remove device"
-                                            >
-                                              <X size={14} />
-                                            </button>
                                           </div>
                                           
                                           {/* Compact 3-column grid for Connection, Host/IP, Port */}
@@ -7857,8 +7217,6 @@ Generated by TekAutomate
                     <Settings size={16} className={showConfig ? "text-blue-600" : "text-gray-500"} />
                     <span className="text-xs font-medium text-gray-700">Config</span>
                   </button>
-                  <button onClick={undo} title="Undo (Ctrl+Z)" className="p-1 hover:bg-gray-100 rounded" data-tour="undo-button"><Undo2 size={16} className="text-gray-500" /></button>
-                  <button onClick={redo} title="Redo (Ctrl+Y)" className="p-1 hover:bg-gray-100 rounded" data-tour="redo-button"><Redo2 size={16} className="text-gray-500" /></button>
                 </div>
               </div>
             </div>
@@ -8099,176 +7457,6 @@ Generated by TekAutomate
                         if (!command) return null;
                         
                         try {
-                          // Check if this is a compound command (multiple commands joined with ;:)
-                          const isCompoundCommand = command.includes(';:');
-                          
-                          // For compound commands, split and process each sub-command separately
-                          if (isCompoundCommand) {
-                            // Split on ;: but keep track of positions for replacement
-                            // We need to track where each sub-command starts in the original string
-                            const subCommands: { cmd: string; startOffset: number; originalPart: string }[] = [];
-                            
-                            // Find all ";:" positions and split accordingly
-                            const separatorRegex = /;:/g;
-                            const separatorPositions: number[] = [];
-                            let match;
-                            while ((match = separatorRegex.exec(command)) !== null) {
-                              separatorPositions.push(match.index);
-                            }
-                            
-                            // Build sub-commands with correct offsets
-                            let lastEnd = 0;
-                            separatorPositions.forEach((sepPos, idx) => {
-                              const part = command.slice(lastEnd, sepPos);
-                              subCommands.push({
-                                cmd: part,
-                                startOffset: lastEnd,
-                                originalPart: part
-                              });
-                              lastEnd = sepPos + 2; // Skip ";:"
-                            });
-                            // Add the last part
-                            const lastPart = command.slice(lastEnd);
-                            subCommands.push({
-                              cmd: lastPart,
-                              startOffset: lastEnd,
-                              originalPart: lastPart
-                            });
-                            
-                            // Process each sub-command
-                            const subCommandSections = subCommands.map((subCmd, subIdx) => {
-                              try {
-                                const parsed = parseSCPI(subCmd.cmd);
-                                let editableParams = detectEditableParameters(parsed);
-                                
-                                // Update currentValue for each param based on actual command content
-                                editableParams = editableParams.map(param => {
-                                  const actualValue = subCmd.cmd.slice(param.startIndex, param.endIndex);
-                                  if (!actualValue.includes('<x>')) {
-                                    return { ...param, currentValue: actualValue };
-                                  }
-                                  return param;
-                                });
-                                
-                                // Filter out argument-type parameters when cmdParams exist
-                                const hasCmdParams = selectedStepData.params.cmdParams && selectedStepData.params.cmdParams.length > 0;
-                                if (hasCmdParams) {
-                                  editableParams = editableParams.filter(p => p.position < 0);
-                                }
-                                
-                                // Adjust indices to be relative to the full compound command
-                                // Add the startOffset of this sub-command to each parameter's indices
-                                const adjustedParams = editableParams.map(param => ({
-                                  ...param,
-                                  startIndex: subCmd.startOffset + param.startIndex,
-                                  endIndex: subCmd.startOffset + param.endIndex
-                                }));
-                                
-                                if (adjustedParams.length === 0) return null;
-                                
-                                // Extract command header for display
-                                const headerDisplay = parsed.header || subCmd.cmd.split(/\s/)[0];
-                                
-                                return {
-                                  header: headerDisplay,
-                                  params: adjustedParams,
-                                  parsed: parsed,
-                                  subCmd: subCmd.cmd
-                                };
-                              } catch {
-                                return null;
-                              }
-                            }).filter(Boolean);
-                            
-                            if (subCommandSections.length === 0) return null;
-                            
-                            // Render compound command sections
-                            return (
-                              <div className="p-2 bg-green-50 rounded border border-green-200">
-                                <div className="text-xs font-semibold mb-2 text-green-800">
-                                  Compound Command Parameters
-                                </div>
-                                {subCommandSections.map((section: any, sectionIdx: number) => (
-                                  <div key={sectionIdx} className={sectionIdx > 0 ? 'mt-3 pt-3 border-t border-green-200' : ''}>
-                                    <div className="text-xs font-medium text-green-700 mb-2 font-mono bg-green-100 px-1 py-0.5 rounded">
-                                      {section.header}
-                                    </div>
-                                    {section.params.map((param: EditableParameter, idx: number) => {
-                                      const currentValueInCommand = command.slice(param.startIndex, param.endIndex);
-                                      let currentValue = currentValueInCommand.includes('<x>') 
-                                        ? (param.validOptions[0] || param.currentValue || '')
-                                        : currentValueInCommand;
-                                      
-                                      // For dropdowns, ensure value matches options
-                                      if (param.validOptions.length > 0) {
-                                        const exactMatch = param.validOptions.find(opt => opt === currentValue);
-                                        if (!exactMatch) {
-                                          const caseMatch = param.validOptions.find(opt => 
-                                            opt.toLowerCase() === currentValue.toLowerCase()
-                                          );
-                                          if (caseMatch) currentValue = caseMatch;
-                                        }
-                                      }
-                                      
-                                      // Get label based on param type
-                                      let label = 'Value';
-                                      if (param.type === 'channel') label = 'Source';
-                                      else if (param.type === 'numeric') {
-                                        const lastMnemonic = (section.parsed.mnemonics[section.parsed.mnemonics.length - 1] || '').toUpperCase();
-                                        if (lastMnemonic.includes('SCALE') || lastMnemonic.includes('SCAL')) label = 'Scale (V/div)';
-                                        else if (lastMnemonic.includes('POSITION') || lastMnemonic.includes('POS')) label = 'Position';
-                                        else if (lastMnemonic.includes('LEVEL') || lastMnemonic.includes('LEVE')) label = 'Level';
-                                        else if (lastMnemonic.includes('OFFSET')) label = 'Offset';
-                                        else label = 'Value';
-                                      }
-                                      else if (param.type === 'enumeration') label = 'Value';
-                                      
-                                      return (
-                                        <div key={idx} className="mb-2">
-                                          <label className="block text-xs mb-1 text-green-700 font-medium">{label}</label>
-                                          {param.validOptions.length > 0 ? (
-                                            <select
-                                              value={currentValue}
-                                              onChange={(e) => {
-                                                const newCommand = replaceParameter(command, param, e.target.value);
-                                                updateStep(selectedStepData.id, {
-                                                  params: { ...selectedStepData.params, command: newCommand }
-                                                });
-                                              }}
-                                              className="w-full px-2 py-1 text-xs border rounded bg-white"
-                                            >
-                                              {param.validOptions.map(opt => (
-                                                <option key={opt} value={opt}>{opt}</option>
-                                              ))}
-                                            </select>
-                                          ) : (
-                                            <input
-                                              type="text"
-                                              inputMode={param.type === 'numeric' ? 'decimal' : 'text'}
-                                              value={currentValue}
-                                              onChange={(e) => {
-                                                const newCommand = replaceParameter(command, param, e.target.value);
-                                                updateStep(selectedStepData.id, {
-                                                  params: { ...selectedStepData.params, command: newCommand }
-                                                });
-                                              }}
-                                              className={`w-full px-2 py-1 text-xs border rounded bg-white ${param.type === 'numeric' ? 'font-mono' : ''}`}
-                                              placeholder={param.type === 'numeric' ? 'Enter number' : 'Enter value'}
-                                            />
-                                          )}
-                                          {param.description && (
-                                            <p className="text-xs text-green-600 mt-1">{param.description}</p>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          }
-                          
-                          // Single command processing (original logic)
                           const parsed = parseSCPI(command);
                           let editableParams = detectEditableParameters(parsed);
                           
@@ -8395,19 +7583,11 @@ Generated by TekAutomate
                             );
                             
                             // Check each command argument
-                            // CRITICAL: arg.startIndex/endIndex are relative to argsString, not original command
-                            // Calculate header offset to convert to absolute indices
-                            const headerOffset = (parsed.hasLeadingColon ? 1 : 0) + parsed.header.length + 1; // +1 for space
-                            
                             commandArgs.forEach((arg, argIdx) => {
-                              // Calculate absolute indices for this argument
-                              const absoluteStartIndex = headerOffset + arg.startIndex;
-                              const absoluteEndIndex = headerOffset + arg.endIndex;
-                              
                               // Check if this argument already has an editable param
                               const existingParam = editableParams.find(p => 
                                 p.position === argIdx && 
-                                p.startIndex === absoluteStartIndex
+                                p.startIndex === arg.startIndex
                               );
                               
                               // Find matching library param
@@ -8444,8 +7624,8 @@ Generated by TekAutomate
                                       type: 'enumeration',
                                       currentValue: arg.value,
                                       validOptions: filteredOptions,
-                                      startIndex: absoluteStartIndex,
-                                      endIndex: absoluteEndIndex,
+                                      startIndex: arg.startIndex,
+                                      endIndex: arg.endIndex,
                                       description: libParam.description || 'Enumeration value'
                                     });
                                   }
@@ -8455,17 +7635,6 @@ Generated by TekAutomate
                           }
                           
                           if (editableParams.length === 0) return null;
-                          
-                          // Filter out argument-type parameters (position >= 0) when cmdParams exist
-                          // These will be shown in the blue "Command Parameters" section instead
-                          // Only keep mnemonic parameters (position < 0) in the green section
-                          const hasCmdParams = selectedStepData.params.cmdParams && selectedStepData.params.cmdParams.length > 0;
-                          if (hasCmdParams) {
-                            // Keep only mnemonic parameters (position < 0) - these are the CH1, MEAS1, etc.
-                            // Filter out argument parameters (position >= 0) - these are the value parameters
-                            editableParams = editableParams.filter(p => p.position < 0);
-                            if (editableParams.length === 0) return null;
-                          }
                           
                           // Helper to get better parameter labels
                           const getParameterLabel = (param: EditableParameter, index: number, parsed: ParsedSCPI): string => {
@@ -8699,7 +7868,6 @@ Generated by TekAutomate
                         ];
                         
                         // Also check if the command has any <x> placeholders
-                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         const hasPlaceholders = /<x>/i.test(command);
                         
                         // Filter out mnemonic parameters
@@ -8713,7 +7881,6 @@ Generated by TekAutomate
                         const valueParam = allParams.find((p: CommandParam) => p.name.toLowerCase() === 'value');
                         const valueIsNumeric = valueParam && (valueParam.type === 'number' || valueParam.type === 'integer');
                         
-                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         const hasSpecificNumericParam = valueIsNumeric && allParams.some((p: CommandParam) => {
                           const pNameLower = p.name.toLowerCase();
                           // Must be a different parameter, numeric, and not a mnemonic placeholder
@@ -8813,67 +7980,7 @@ Generated by TekAutomate
                           return aPriority - bPriority;
                         });
                         
-                        // Fallback: If no params but syntax suggests arguments are needed, show a text input
-                        if (sortedParams.length === 0) {
-                          // Check if the command syntax suggests it needs a value
-                          const libCmd = commandLibrary.find(cmd => {
-                            const cmdScpi = cmd.scpi || '';
-                            const cmdHeader = cmdScpi.split(/\s|\?/)[0];
-                            const stepHeader = command.split(/\s|\?/)[0];
-                            const normalize = (h: string) => h.replace(/\d+/g, '<x>').toLowerCase();
-                            return normalize(cmdHeader) === normalize(stepHeader);
-                          });
-                          
-                          const syntax = (libCmd as any)?.syntax || (libCmd as any)?._manualEntry?.syntax || (libCmd as any)?.manualEntry?.syntax;
-                          const syntaxStr = typeof syntax === 'string' ? syntax : 
-                                           Array.isArray(syntax) ? syntax.join(' ') :
-                                           (syntax?.set || '');
-                          
-                          // Check if syntax has value placeholders like <QString>, <NR1>, COLOR<x>
-                          const needsValue = /<QString>|<Qstring>|<NR\d*>|COLOR<[xX]>/i.test(syntaxStr);
-                          
-                          if (needsValue && !isQueryStep) {
-                            // Show a fallback text input for missing parameter
-                            const isColor = /COLOR<[xX]>/i.test(syntaxStr);
-                            return (
-                              <div className="p-2 bg-yellow-50 rounded border border-yellow-200">
-                                <div className="text-xs font-semibold mb-2 text-yellow-800">Value (auto-detected)</div>
-                                <input
-                                  type="text"
-                                  value={selectedStepData.params.paramValues?.['_fallback_value'] || ''}
-                                  onChange={(e) => {
-                                    const newValue = e.target.value;
-                                    // Append value to command if not already there
-                                    let newCommand = command;
-                                    const existingValue = selectedStepData.params.paramValues?.['_fallback_value'];
-                                    if (existingValue && command.endsWith(` ${existingValue}`)) {
-                                      newCommand = command.slice(0, -existingValue.length - 1);
-                                    }
-                                    if (newValue) {
-                                      newCommand = `${newCommand.trim()} ${newValue}`;
-                                    }
-                                    updateStep(selectedStepData.id, {
-                                      params: {
-                                        ...selectedStepData.params,
-                                        command: newCommand,
-                                        paramValues: {
-                                          ...selectedStepData.params.paramValues,
-                                          '_fallback_value': newValue
-                                        }
-                                      }
-                                    });
-                                  }}
-                                  placeholder={isColor ? 'e.g., COLOR13' : 'Enter value...'}
-                                  className="w-full px-2 py-1 text-xs border rounded bg-white"
-                                />
-                                <p className="text-xs text-yellow-600 mt-1">
-                                  {isColor ? 'Color value (COLOR0-COLOR47)' : 'This command expects a value argument'}
-                                </p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }
+                        if (sortedParams.length === 0) return null;
                         
                         return (
                           <div className="p-2 bg-blue-50 rounded border border-blue-200">
@@ -9008,7 +8115,6 @@ Generated by TekAutomate
                             
                             // Check if options contain a numeric or string placeholder
                             const numericPlaceholderOption = availableOptions.find(opt => numericPlaceholderRegex.test(opt));
-                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                             const stringPlaceholderOption = availableOptions.find(opt => stringPlaceholderRegex.test(opt));
                             const hasNumericPlaceholder = !!numericPlaceholderOption;
                             
@@ -9022,7 +8128,6 @@ Generated by TekAutomate
                             const needsOnlyNumericInput = hasNumericPlaceholder && filteredOptions.length === 0;
                             
                             // Check if current value is a numeric input (not one of the enum options)
-                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                             const isNumericValue = !filteredOptions.includes(currentValueStr) && 
                               (currentValueStr === '' || !isNaN(parseFloat(currentValueStr)));
                             
@@ -9666,494 +8771,139 @@ Generated by TekAutomate
                     </div>
                   )}
 
-                  {selectedStepData.type === 'tm_device_command' && (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="mb-3">
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Command</label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={selectedStepData.params.code || ''}
-                            onChange={(e) => {
-                              updateStep(selectedStepData.id, {
-                                params: {
-                                  ...selectedStepData.params,
-                                  code: e.target.value
-                                }
-                              });
-                            }}
-                            placeholder="mso.commands.ch[1].scale.write(1.0)"
-                            className="flex-1 px-2 py-1 text-xs font-mono border rounded"
-                          />
-                          <button
-                            onClick={() => {
-                              setTmDevicesBrowserCallback(() => (cmd: TmDeviceCommand) => {
-                                updateStep(selectedStepData.id, {
-                                  params: {
-                                    ...selectedStepData.params,
-                                    code: cmd.code,
-                                    model: cmd.model,
-                                    description: cmd.description
-                                  },
-                                  label: cmd.description || (() => {
-                                    // Generate better label from code
-                                    if (!cmd.code) return 'tm_devices Command';
-                                    const parts = cmd.code.replace(/^[^.]+\.commands\./, '').split('.');
-                                    const method = parts[parts.length - 1]?.replace(/\(.*?\)/, '') || '';
-                                    const lastPart = parts[parts.length - 2] || parts[parts.length - 1] || '';
-                                    const cleanPart = lastPart.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '');
-                                    const formatted = cleanPart
-                                      .split(/(?=[A-Z])/)
-                                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                                      .join(' ');
-                                    const methodPart = method.charAt(0).toUpperCase() + method.slice(1);
-                                    return formatted ? `${formatted} ${methodPart}` : `${methodPart} Command`;
-                                  })()
-                                });
-                              });
-                              setShowTmDevicesBrowser(true);
-                            }}
-                            className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700"
-                            title="Browse commands"
-                          >
-                            <Search size={12} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              // Extract command path from code for help lookup
-                              const code = selectedStepData.params.code || '';
-                              if (!code) return;
-                              
-                              // Parse code to get path (e.g., "mso.commands.ch[1].scale.write(1.0)" -> "ch.scale")
-                              const parts = code.replace(/^[^.]+\.commands\./, '').split('.');
-                              const method = parts[parts.length - 1]?.replace(/\(.*?\)/, '') || '';
-                              const pathWithoutMethod = parts.slice(0, -1).join('.');
-                              const cleanPath = pathWithoutMethod.replace(/\[\d+\]/g, '[x]');
-                              
-                              // Store info for help modal
-                              setTmDevicesHelpInfo({
-                                code,
-                                path: cleanPath,
-                                method,
-                                model: selectedStepData.params.model || ''
-                              });
-                              setShowTmDevicesHelp(true);
-                            }}
-                            className="px-2 py-1 bg-gray-600 text-white rounded text-xs hover:bg-gray-700"
-                            title="Show command help"
-                          >
-                            <HelpCircle size={12} />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Model - Compact */}
-                      {selectedStepData.params.model && (
-                        <div className="flex items-center gap-2 text-xs mb-2">
-                          <span className="text-gray-600">Model:</span>
-                          <span className="font-mono text-purple-600">{selectedStepData.params.model}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {selectedStepData.type === 'save_waveform' && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                      {/* Section 1: What to Capture */}
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">1</span>
-                          What to Capture
-                        </h4>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Source Channel</label>
-                            <input
-                              type="text"
-                              value={selectedStepData.params.source || ''}
-                              onChange={(e) => {
-                                const newSource = e.target.value.toUpperCase();
-                                const format = (selectedStepData.params.format || 'bin') as string;
-                                const extMap: Record<string, string> = { bin: '.bin', csv: '.csv', wfm: '.wfm', mat: '.mat' };
-                                const ext = extMap[format] || '.bin';
-                                const newFilename = (newSource || 'ch1').toLowerCase() + ext;
-                                updateStep(selectedStepData.id, { 
-                                  params: { ...selectedStepData.params, source: newSource, filename: newFilename } 
-                                });
-                              }}
-                              placeholder="CH1"
-                              className="w-full px-2.5 py-1.5 text-xs font-mono border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Output Filename</label>
-                            <input
-                              type="text"
-                              value={(selectedStepData.params.filename || 'waveform').replace(/\.(bin|wfm|csv)$/i, '')}
-                              onChange={(e) => {
-                                const baseName = e.target.value.replace(/\.(bin|wfm|csv)$/i, '');
-                                const format = selectedStepData.params.format || 'bin';
-                                const ext = format === 'csv' ? '.csv' : format === 'wfm' ? '.wfm' : '.bin';
-                                updateStep(selectedStepData.id, { params: { ...selectedStepData.params, filename: baseName + ext } });
-                              }}
-                              placeholder="waveform"
-                              className="w-full px-2.5 py-1.5 text-xs font-mono border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
-                            />
-                            <p className="text-xs text-gray-400 mt-0.5">→ {selectedStepData.params.filename || 'waveform.bin'}</p>
-                          </div>
-                        </div>
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-5">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Command (optional)</label>
+                        <input
+                          type="text"
+                          value={selectedStepData.params.command || ''}
+                          onChange={(e) =>
+                            updateStep(selectedStepData.id, { params: { ...selectedStepData.params, command: e.target.value } })
+                          }
+                          placeholder="Leave blank for CURVe? or enter FILESYSTEM:READFILE ..."
+                          className="w-full px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                        />
+                        <p className="text-xs text-gray-500 mt-1.5">Leave blank for standard waveform capture</p>
                       </div>
                       
-                      {/* Section 2: Format & Transfer */}
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">2</span>
-                          Format & Transfer
-                        </h4>
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Output Format</label>
-                          <div className="grid grid-cols-2 gap-2">
-                            {[
-                              { value: 'bin', label: 'Binary', desc: 'PC pulls • Fastest raw data', group: 'pc' },
-                              { value: 'csv', label: 'CSV', desc: 'PC pulls • Scaled values', group: 'pc' },
-                              { value: 'wfm', label: 'WFM', desc: 'Scope saves • Recallable', group: 'scope' },
-                              { value: 'mat', label: 'MAT', desc: 'Scope saves • MATLAB', group: 'scope' }
-                            ].map(opt => (
-                              <button
-                                key={opt.value}
-                                onClick={() => {
-                                  const ext = { bin: '.bin', csv: '.csv', wfm: '.wfm', mat: '.mat' }[opt.value] || '.bin';
-                                  const baseName = (selectedStepData.params.filename || 'waveform').replace(/\.(bin|wfm|csv|mat)$/i, '');
-                                  updateStep(selectedStepData.id, { 
-                                    params: { 
-                                      ...selectedStepData.params, 
-                                      format: opt.value,
-                                      filename: baseName + ext,
-                                      // Clear PC-only params for scope formats
-                                      ...(opt.group === 'scope' ? { start: 1, stop: null, width: 1, encoding: 'RIBinary' } : {})
-                                    } 
-                                  });
-                                }}
-                                className={`p-2 rounded border text-left transition-all ${
-                                  (selectedStepData.params.format || 'bin') === opt.value 
-                                    ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200' 
-                                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                }`}
-                              >
-                                <div className="text-sm font-medium">{opt.label}</div>
-                                <div className="text-[10px] text-gray-500">{opt.desc}</div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        {/* PC Transfer options - only for BIN/CSV */}
-                        {['bin', 'csv'].includes(selectedStepData.params.format || 'bin') && (
-                          <>
-                            {/* Performance preset - only for binary */}
-                            {(selectedStepData.params.format || 'bin') === 'bin' && (
-                              <div>
-                                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Transfer Speed</label>
-                                <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                                  <span className="text-xs text-gray-500">Fastest</span>
-                                  <input
-                                    type="range"
-                                    min="1"
-                                    max="2"
-                                    value={(selectedStepData.params.width || 1)}
-                                    onChange={(e) => {
-                                      const val = parseInt(e.target.value);
-                                      updateStep(selectedStepData.id, { 
-                                        params: { ...selectedStepData.params, width: val, encoding: 'RIBinary' } 
-                                      });
-                                    }}
-                                    className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                                  />
-                                  <span className="text-xs text-gray-500">Precision</span>
-                                </div>
-                                <p className="text-[10px] text-gray-500 mt-1 text-center">
-                                  {(selectedStepData.params.width || 1) === 1 ? '1 byte/sample • ~10 MB/s' : '2 bytes/sample • full precision'}
-                                </p>
-                              </div>
-                            )}
-                            
-                            {/* CSV info */}
-                            {(selectedStepData.params.format || 'bin') === 'csv' && (
-                              <div className="bg-green-50 border border-green-200 rounded p-2">
-                                <p className="text-xs text-green-800">
-                                  <strong>✓ PC Transfer:</strong> Data pulled via CURVE?, scaled with WFMOUTPRE → Time(s), Amplitude(V)
-                                </p>
-                              </div>
-                            )}
-                            
-                            {/* BIN info */}
-                            {(selectedStepData.params.format || 'bin') === 'bin' && (
-                              <div className="bg-blue-50 border border-blue-200 rounded p-2">
-                                <p className="text-xs text-blue-800">
-                                  <strong>✓ PC Transfer:</strong> Fast binary via read_waveform_binary() • No metadata
-                                </p>
-                              </div>
-                            )}
-                          </>
-                        )}
-                        
-                        {/* Scope-native format info - WFM/MAT */}
-                        {['wfm', 'mat'].includes(selectedStepData.params.format || 'bin') && (
-                          <div className="bg-amber-50 border border-amber-200 rounded p-2.5">
-                            <p className="text-xs text-amber-800">
-                              <strong>⚡ Scope-Native Save:</strong> Uses <code className="bg-amber-100 px-1 rounded">SAVE:WAVEFORM</code>
-                            </p>
-                            <ul className="text-[10px] text-amber-700 mt-1.5 space-y-0.5 ml-3 list-disc">
-                              <li>Full metadata (scaling, units, timestamp)</li>
-                              {selectedStepData.params.format === 'wfm' && <li>Recallable on scope</li>}
-                              {selectedStepData.params.format === 'mat' && <li>MATLAB-compatible format</li>}
-                              <li>Source channel must be active (displayed)</li>
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Section 3: Data Range - only for BIN/CSV (PC transfer) */}
-                      {['bin', 'csv'].includes(selectedStepData.params.format || 'bin') && (
-                        <div className="space-y-3">
-                          <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">3</span>
-                            Capture Range
-                          </h4>
-                          <div className="flex gap-3">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name="captureRange"
-                                checked={selectedStepData.params.stop === null || selectedStepData.params.stop === undefined}
-                                onChange={() => updateStep(selectedStepData.id, { params: { ...selectedStepData.params, start: 1, stop: null } })}
-                                className="text-indigo-600 focus:ring-indigo-500"
-                              />
-                              <span className="text-xs">Full record (auto-detect)</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="radio"
-                                name="captureRange"
-                                checked={selectedStepData.params.stop !== null && selectedStepData.params.stop !== undefined}
-                                onChange={() => updateStep(selectedStepData.id, { params: { ...selectedStepData.params, start: 1, stop: 10000 } })}
-                                className="text-indigo-600 focus:ring-indigo-500"
-                              />
-                              <span className="text-xs">Custom range</span>
-                            </label>
-                          </div>
-                          
-                          {selectedStepData.params.stop !== null && selectedStepData.params.stop !== undefined && (
-                            <div className="grid grid-cols-2 gap-3 pl-6">
-                              <div>
-                                <label className="block text-xs text-gray-600 mb-1">Start Point</label>
-                                <input
-                                  type="number"
-                                  value={selectedStepData.params.start || 1}
-                                  onChange={(e) => updateStep(selectedStepData.id, { params: { ...selectedStepData.params, start: parseInt(e.target.value) || 1 } })}
-                                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
-                                  min="1"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-600 mb-1">Stop Point</label>
-                                <input
-                                  type="number"
-                                  value={selectedStepData.params.stop || 10000}
-                                  onChange={(e) => updateStep(selectedStepData.id, { params: { ...selectedStepData.params, stop: parseInt(e.target.value) || 10000 } })}
-                                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
-                                  min="1"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      {/* Preview Box */}
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="text-xs font-semibold text-gray-600 mb-2">Will capture:</div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                          <div className="text-gray-500">Source:</div>
-                          <div className="font-mono font-medium">{selectedStepData.params.source || 'CH1'}</div>
-                          <div className="text-gray-500">Format:</div>
-                          <div className="font-medium">{(selectedStepData.params.format || 'bin').toUpperCase()}</div>
-                          <div className="text-gray-500">Points:</div>
-                          <div className="font-medium">{selectedStepData.params.stop ? `${selectedStepData.params.start || 1} - ${selectedStepData.params.stop}` : 'Full record (auto)'}</div>
-                          <div className="text-gray-500">Output:</div>
-                          <div className="font-mono font-medium text-indigo-600">{selectedStepData.params.filename || 'waveform.bin'}</div>
-                        </div>
-                      </div>
-                      
-                      {/* Advanced Section (collapsed) */}
-                      <details className="group">
-                        <summary className="text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700 flex items-center gap-1">
-                          <span className="group-open:rotate-90 transition-transform">▶</span>
-                          Advanced Options
-                        </summary>
-                        <div className="mt-3 pl-4 space-y-3 border-l-2 border-gray-200">
-                          <div>
-                            <label className="block text-xs text-gray-600 mb-1">Override Command</label>
-                            <input
-                              type="text"
-                              value={selectedStepData.params.command || ''}
-                              onChange={(e) => updateStep(selectedStepData.id, { params: { ...selectedStepData.params, command: e.target.value } })}
-                              placeholder="Leave blank for optimized capture"
-                              className="w-full px-2 py-1 text-xs font-mono border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
-                            />
-                            <p className="text-[10px] text-amber-600 mt-1">⚠ Advanced: Overrides optimized read_waveform_binary()</p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">Data Width</label>
-                              <select
-                                value={selectedStepData.params.width || 1}
-                                onChange={(e) => updateStep(selectedStepData.id, { params: { ...selectedStepData.params, width: parseInt(e.target.value) } })}
-                                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
-                              >
-                                <option value="1">1 byte</option>
-                                <option value="2">2 bytes</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">Encoding</label>
-                              <select
-                                value={selectedStepData.params.encoding || 'RIBinary'}
-                                onChange={(e) => updateStep(selectedStepData.id, { params: { ...selectedStepData.params, encoding: e.target.value } })}
-                                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none"
-                              >
-                                <option value="RIBinary">RIBinary (signed)</option>
-                                <option value="RPBinary">RPBinary (unsigned)</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      </details>
-                    </div>
-                  )}
-
-                  {selectedStepData.type === 'save_screenshot' && (() => {
-                    // Check if bound device uses socket connection
-                    const boundDevice = selectedStepData.boundDeviceId 
-                      ? devices.find(d => d.id === selectedStepData.boundDeviceId)
-                      : devices[0];
-                    const isRawSocket = boundDevice?.connectionType === 'socket';
-                    
-                    return (
-                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                      {/* Raw Socket Notice */}
-                      {isRawSocket && (
-                        <div className="bg-blue-50 border border-blue-200 rounded p-2.5">
-                          <p className="text-xs text-blue-800 font-medium flex items-center gap-1.5">
-                            <span className="text-blue-500">⚡</span> Raw Socket Mode Detected
-                          </p>
-                          <p className="text-[10px] text-blue-700 mt-1">
-                            Using <code className="bg-blue-100 px-1 rounded">helper/socket_instr.py</code> for reliable screenshot capture.
-                            This bypasses PyVISA timeout issues with FILESYSTEM:READFILE.
-                          </p>
-                        </div>
-                      )}
-                      
-                      {/* Section 1: Output File */}
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center text-[10px] font-bold">1</span>
-                          Output File
-                        </h4>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Filename</label>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Source / Channel</label>
                           <input
                             type="text"
-                            value={(selectedStepData.params.filename || 'screenshot').replace(/\.png$/i, '')}
-                            onChange={(e) => {
-                              const baseName = e.target.value.replace(/\.png$/i, '');
-                              updateStep(selectedStepData.id, { params: { ...selectedStepData.params, filename: baseName + '.png' } });
-                            }}
-                            placeholder="screenshot"
-                            className="w-full px-2.5 py-1.5 text-xs font-mono border border-gray-300 rounded focus:ring-2 focus:ring-pink-500 focus:border-pink-500 outline-none bg-white"
+                            value={selectedStepData.params.source || 'CH1'}
+                            onChange={(e) =>
+                              updateStep(selectedStepData.id, { params: { ...selectedStepData.params, source: e.target.value.toUpperCase() } })
+                            }
+                            placeholder="CH1, CH2, MATH1"
+                            className="w-full px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
                           />
-                          <p className="text-xs text-gray-400 mt-0.5">→ {selectedStepData.params.filename || 'screenshot.png'}</p>
+                          <p className="text-xs text-gray-500 mt-1.5">Channel: CH1-CH4, Math: MATH1-MATH4</p>
                         </div>
-                      </div>
-                      
-                      {/* Section 2: Scope Type - only show if not raw socket */}
-                      {!isRawSocket && (
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center text-[10px] font-bold">2</span>
-                          Scope Type
-                        </h4>
+                        
                         <div>
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Select your scope series</label>
-                          <div className="grid grid-cols-2 gap-2">
-                            {[
-                              { value: 'modern', label: 'Modern (MSO 4/5/6)', desc: 'Uses SAVE:IMAGE command' },
-                              { value: 'legacy', label: 'Legacy (5k/7k/70k)', desc: 'Uses HARDCOPY command' }
-                            ].map(opt => (
-                              <button
-                                key={opt.value}
-                                onClick={() => updateStep(selectedStepData.id, { 
-                                  params: { ...selectedStepData.params, scopeType: opt.value } 
-                                })}
-                                className={`p-2 rounded border text-left transition-all ${
-                                  (selectedStepData.params.scopeType || 'modern') === opt.value 
-                                    ? 'border-pink-500 bg-pink-50 ring-2 ring-pink-200' 
-                                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                }`}
-                              >
-                                <div className="text-sm font-medium">{opt.label}</div>
-                                <div className="text-[10px] text-gray-500">{opt.desc}</div>
-                              </button>
-                            ))}
-                          </div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Filename</label>
+                          <input
+                            type="text"
+                            value={selectedStepData.params.filename || 'data.bin'}
+                            onChange={(e) =>
+                              updateStep(selectedStepData.id, { params: { ...selectedStepData.params, filename: e.target.value } })
+                            }
+                            className="w-full px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                          />
                         </div>
                       </div>
-                      )}
                       
-                      {/* Info Box based on scope type */}
-                      {!isRawSocket && (
-                      <div className={`rounded p-2.5 ${
-                        (selectedStepData.params.scopeType || 'modern') === 'modern' 
-                          ? 'bg-pink-50 border border-pink-200' 
-                          : 'bg-amber-50 border border-amber-200'
-                      }`}>
-                        {(selectedStepData.params.scopeType || 'modern') === 'modern' ? (
-                          <>
-                            <p className="text-xs text-pink-800 font-medium">Modern MSO 4/5/6 Series Workflow:</p>
-                            <ol className="text-[10px] text-pink-700 mt-1.5 space-y-0.5 ml-3 list-decimal">
-                              <li>Save image to scope temp folder via <code className="bg-pink-100 px-1 rounded">SAVE:IMAGE</code></li>
-                              <li>Read file from scope via <code className="bg-pink-100 px-1 rounded">FILESYSTEM:READFILE</code></li>
-                              <li>Write to local file</li>
-                              <li>Clean up temp file on scope</li>
-                            </ol>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-xs text-amber-800 font-medium">Legacy 5k/7k/70k Series Workflow:</p>
-                            <ol className="text-[10px] text-amber-700 mt-1.5 space-y-0.5 ml-3 list-decimal">
-                              <li>Configure hardcopy format via <code className="bg-amber-100 px-1 rounded">HARDCOPY:FORMAT PNG</code></li>
-                              <li>Save to scope temp folder via <code className="bg-amber-100 px-1 rounded">HARDCOPY START</code></li>
-                              <li>Read file from scope via <code className="bg-amber-100 px-1 rounded">FILESYSTEM:READFILE</code></li>
-                              <li>Write to local file and clean up</li>
-                            </ol>
-                          </>
-                        )}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Waveform Format</label>
+                        <select
+                          value={selectedStepData.params.format || 'bin'}
+                          onChange={(e) => {
+                            const format = e.target.value as 'bin' | 'wfm' | 'csv';
+                            const ext = format === 'bin' ? '.bin' : format === 'wfm' ? '.wfm' : '.csv';
+                            const currentFilename = selectedStepData.params.filename || 'data.bin';
+                            const baseName = currentFilename.replace(/\.(bin|wfm|csv)$/i, '');
+                            updateStep(selectedStepData.id, { 
+                              params: { 
+                                ...selectedStepData.params, 
+                                format: format,
+                                filename: baseName + ext
+                              } 
+                            });
+                          }}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                        >
+                          <option value="bin">Binary (.bin) - Fast, precise</option>
+                          <option value="wfm">Tektronix (.wfm) - Native format</option>
+                          <option value="csv">CSV (.csv) - Human readable</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1.5">
+                          {(selectedStepData.params.format || 'bin') === 'bin' && 'Raw binary - fastest, full precision'}
+                          {(selectedStepData.params.format || 'bin') === 'wfm' && 'Native format - can reload into scope'}
+                          {(selectedStepData.params.format || 'bin') === 'csv' && 'ASCII format - slower, less precise'}
+                        </p>
                       </div>
-                      )}
                       
-                      {/* Preview Box */}
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="text-xs font-semibold text-gray-600 mb-2">Will capture:</div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                          <div className="text-gray-500">Method:</div>
-                          <div className="font-medium">{isRawSocket ? 'Raw Socket (socket_instr.py)' : (selectedStepData.params.scopeType || 'modern') === 'modern' ? 'SAVE:IMAGE' : 'HARDCOPY'}</div>
-                          <div className="text-gray-500">Output:</div>
-                          <div className="font-mono font-medium text-pink-600">{selectedStepData.params.filename || 'screenshot.png'}</div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Data Width (bytes)</label>
+                          <select
+                            value={selectedStepData.params.width || 1}
+                            onChange={(e) =>
+                              updateStep(selectedStepData.id, { params: { ...selectedStepData.params, width: parseInt(e.target.value) } })
+                            }
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                          >
+                            <option value="1">1 byte (faster)</option>
+                            <option value="2">2 bytes (precision)</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Encoding</label>
+                          <select
+                            value={selectedStepData.params.encoding || 'RIBinary'}
+                            onChange={(e) =>
+                              updateStep(selectedStepData.id, { params: { ...selectedStepData.params, encoding: e.target.value } })
+                            }
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                          >
+                            <option value="RIBinary">RIBinary (signed)</option>
+                            <option value="RPBinary">RPBinary (unsigned)</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Start Point</label>
+                          <input
+                            type="number"
+                            value={selectedStepData.params.start || 1}
+                            onChange={(e) =>
+                              updateStep(selectedStepData.id, { params: { ...selectedStepData.params, start: parseInt(e.target.value) || 1 } })
+                            }
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                            min="1"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Stop Point</label>
+                          <input
+                            type="text"
+                            value={selectedStepData.params.stop === null ? '' : selectedStepData.params.stop}
+                            onChange={(e) =>
+                              updateStep(selectedStepData.id, { params: { ...selectedStepData.params, stop: e.target.value ? parseInt(e.target.value) : null } })
+                            }
+                            placeholder="Auto-detect (leave blank)"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                          />
                         </div>
                       </div>
                     </div>
-                    );
-                  })()}
+                  )}
 
                   {selectedStepData.type === 'error_check' && (
                     <div className="mt-4 pt-4 border-t border-gray-200">
@@ -10173,153 +8923,6 @@ Generated by TekAutomate
                     </div>
                   )}
 
-                  {/* Recall Step UI */}
-                  {selectedStepData.type === 'recall' && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
-                      {/* Section 1: Recall Type */}
-                      <div className="space-y-3">
-                        <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-[10px] font-bold">1</span>
-                          What to Recall
-                        </h4>
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { value: 'FACTORY', label: '🔄 Factory Defaults', desc: 'Reset all settings' },
-                            { value: 'SETUP', label: '⚙️ Setup (.SET)', desc: 'Settings only' },
-                            { value: 'SESSION', label: '📦 Session (.TSS)', desc: 'Full session with waveforms' },
-                            { value: 'WAVEFORM', label: '📈 Waveform', desc: 'Load waveform to reference' }
-                          ].map(opt => (
-                            <button
-                              key={opt.value}
-                              onClick={() => updateStep(selectedStepData.id, { 
-                                params: { ...selectedStepData.params, recallType: opt.value } 
-                              })}
-                              className={`p-2.5 rounded border text-left transition-all ${
-                                (selectedStepData.params.recallType || 'FACTORY') === opt.value 
-                                  ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200' 
-                                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                              }`}
-                            >
-                              <div className="text-sm font-medium">{opt.label}</div>
-                              <div className="text-[10px] text-gray-500">{opt.desc}</div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Section 2: File Path (hidden for Factory) */}
-                      {(selectedStepData.params.recallType || 'FACTORY') !== 'FACTORY' && (
-                        <div className="space-y-3">
-                          <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-[10px] font-bold">2</span>
-                            File Path
-                          </h4>
-                          <div>
-                            <input
-                              type="text"
-                              value={selectedStepData.params.filePath || ''}
-                              onChange={(e) =>
-                                updateStep(selectedStepData.id, { params: { ...selectedStepData.params, filePath: e.target.value } })
-                              }
-                              placeholder={
-                                selectedStepData.params.recallType === 'SETUP' ? 'C:/Users/Public/Tektronix/TekScope/Setups/MySetup.set' :
-                                selectedStepData.params.recallType === 'SESSION' ? 'C:/Users/Public/Tektronix/TekScope/Sessions/MySession.tss' :
-                                'C:/Users/Public/Tektronix/TekScope/Waveforms/MyWaveform.wfm'
-                              }
-                              className="w-full px-2.5 py-1.5 text-xs font-mono border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none bg-white"
-                            />
-                            <p className="text-[10px] text-gray-500 mt-1">
-                              {selectedStepData.params.recallType === 'SETUP' && 'Path to .SET file (settings only)'}
-                              {selectedStepData.params.recallType === 'SESSION' && 'Path to .TSS file (full session with waveforms)'}
-                              {selectedStepData.params.recallType === 'WAVEFORM' && 'Path to .WFM file'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Section 3: Reference (only for Waveform) */}
-                      {selectedStepData.params.recallType === 'WAVEFORM' && (
-                        <div className="space-y-3">
-                          <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center text-[10px] font-bold">3</span>
-                            Target Reference
-                          </h4>
-                          <div className="grid grid-cols-4 gap-2">
-                            {['REF1', 'REF2', 'REF3', 'REF4'].map(ref => (
-                              <button
-                                key={ref}
-                                onClick={() => updateStep(selectedStepData.id, { 
-                                  params: { ...selectedStepData.params, reference: ref } 
-                                })}
-                                className={`p-2 rounded border text-center transition-all ${
-                                  (selectedStepData.params.reference || 'REF1') === ref 
-                                    ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200 font-bold' 
-                                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                }`}
-                              >
-                                {ref}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Info Box */}
-                      <div className={`rounded p-2.5 ${
-                        (selectedStepData.params.recallType || 'FACTORY') === 'FACTORY' ? 'bg-blue-50 border border-blue-200' :
-                        selectedStepData.params.recallType === 'SETUP' ? 'bg-green-50 border border-green-200' :
-                        selectedStepData.params.recallType === 'SESSION' ? 'bg-purple-50 border border-purple-200' :
-                        'bg-amber-50 border border-amber-200'
-                      }`}>
-                        {(selectedStepData.params.recallType || 'FACTORY') === 'FACTORY' && (
-                          <>
-                            <p className="text-xs text-blue-800 font-medium">🔄 Factory Reset</p>
-                            <p className="text-[10px] text-blue-700 mt-1">
-                              Resets all instrument settings to factory defaults. No file needed.
-                            </p>
-                          </>
-                        )}
-                        {selectedStepData.params.recallType === 'SETUP' && (
-                          <>
-                            <p className="text-xs text-green-800 font-medium">⚙️ Setup File (.SET)</p>
-                            <p className="text-[10px] text-green-700 mt-1">
-                              Recalls <strong>settings only</strong> - channel scales, trigger, horizontal, etc.
-                              Does NOT include waveform data or measurements.
-                            </p>
-                          </>
-                        )}
-                        {selectedStepData.params.recallType === 'SESSION' && (
-                          <>
-                            <p className="text-xs text-purple-800 font-medium">📦 Session File (.TSS)</p>
-                            <p className="text-[10px] text-purple-700 mt-1">
-                              Recalls <strong>everything</strong> - settings, waveforms, measurements, math, references.
-                              Use this to restore a complete scope state.
-                            </p>
-                          </>
-                        )}
-                        {selectedStepData.params.recallType === 'WAVEFORM' && (
-                          <>
-                            <p className="text-xs text-amber-800 font-medium">📈 Waveform File (.WFM)</p>
-                            <p className="text-[10px] text-amber-700 mt-1">
-                              Loads a saved waveform into a reference channel (REF1-REF4).
-                              Useful for comparing live signals against golden waveforms.
-                            </p>
-                          </>
-                        )}
-                      </div>
-
-                      {/* SCPI Preview */}
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                        <div className="text-xs font-semibold text-gray-600 mb-2">SCPI Command:</div>
-                        <code className="text-xs font-mono text-orange-600 break-all">
-                          {(selectedStepData.params.recallType || 'FACTORY') === 'FACTORY' && 'RECALL:SETUP FACTORY'}
-                          {selectedStepData.params.recallType === 'SETUP' && `RECALL:SETUP "${selectedStepData.params.filePath || ''}"`}
-                          {selectedStepData.params.recallType === 'SESSION' && `RECALL:SESSION "${selectedStepData.params.filePath || ''}"`}
-                          {selectedStepData.params.recallType === 'WAVEFORM' && `RECALL:WAVEFORM "${selectedStepData.params.filePath || ''}",${selectedStepData.params.reference || 'REF1'}`}
-                        </code>
-                      </div>
-                    </div>
-                  )}
 
                   {/* SCPI Preview - Set & Query */}
                   {selectedStepData.type === 'set_and_query' && (() => {
@@ -10378,156 +8981,110 @@ Generated by TekAutomate
                     );
                   })()}
                   
-                  {/* Python Preview - Only show when there's actual content */}
-                  {(() => {
-                    if (selectedStepData.type === 'set_and_query' || selectedStepData.type === 'connect' || selectedStepData.type === 'disconnect') {
-                      return null;
-                    }
-                    
-                    const cmd = substituteSCPI(
-                      selectedStepData.params.command || '', 
-                      deduplicatedParams || selectedStepData.params.cmdParams || [], 
-                      selectedStepData.params.paramValues || {}
-                    ) || selectedStepData.params.command || '';
-                    
-                    // Only show preview if there's a command
-                    if (!cmd) return null;
-                    
-                    const isTmDevices = cmd.includes('.commands.') || cmd.includes('.add_') || cmd.includes('.save_');
-                    const isTekHSI = (cmd.startsWith('scope.') && !isTmDevices) || cmd.startsWith('#');
-                    const varName = selectedStepData.params.saveAs;
-                    
-                    return (
-                      <div className="mt-3">
-                        <div className="text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wide">Python Preview</div>
-                        {selectedStepData.type === 'query' && (
-                          isTmDevices || isTekHSI ? (
-                            <div className="p-2 bg-slate-800 rounded text-[11px] font-mono text-green-400 break-all">
-                              {varName && <span className="text-blue-400">{varName}</span>}
-                              {varName && <span className="text-white"> = </span>}
-                              <span className="text-green-400">{cmd}</span>
-                            </div>
-                          ) : (
-                            <div className="p-2 bg-slate-800 rounded text-[11px] font-mono break-all">
-                              {varName && <><span className="text-blue-400">{varName}</span><span className="text-white"> = </span></>}
-                              <span className="text-yellow-400">scpi</span>
-                              <span className="text-white">.</span>
-                              <span className="text-blue-300">query</span>
-                              <span className="text-white">(</span>
-                              <span className="text-green-400">{JSON.stringify(cmd)}</span>
-                              <span className="text-white">)</span>
-                            </div>
-                          )
-                        )}
-                        {selectedStepData.type === 'write' && (
-                          isTmDevices || isTekHSI ? (
-                            <div className="p-2 bg-slate-800 rounded text-[11px] font-mono text-green-400 break-all">
-                              {cmd}
-                            </div>
-                          ) : (
-                            <div className="p-2 bg-slate-800 rounded text-[11px] font-mono break-all">
-                              <span className="text-yellow-400">scpi</span>
-                              <span className="text-white">.</span>
-                              <span className="text-blue-300">write</span>
-                              <span className="text-white">(</span>
-                              <span className="text-green-400">{JSON.stringify(cmd)}</span>
-                              <span className="text-white">)</span>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    );
-                  })()}
-                  {selectedStepData.type === 'sleep' && (
-                    <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto border border-gray-700 font-mono text-xs leading-relaxed">
-                      <code className="text-green-400">time.sleep({selectedStepData.params.duration})</code>
-                    </pre>
-                  )}
-                  {selectedStepData.type === 'comment' && (
-                    <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto border border-gray-700 font-mono text-xs leading-relaxed">
-                      <code className="text-green-400"># {selectedStepData.params.text || selectedStepData.label || ''}</code>
-                    </pre>
-                  )}
-                  {selectedStepData.type === 'save_waveform' && (() => {
-                    const cmd = selectedStepData.params.command || 'CURVe?';
-                    const fn = selectedStepData.params.filename || 'data.bin';
-                    const source = selectedStepData.params.source || 'CH1';
-                    const width = selectedStepData.params.width || 1;
-                    const encoding = selectedStepData.params.encoding || 'RIBinary';
-                    const start = selectedStepData.params.start || 1;
-                    const stop = selectedStepData.params.stop || 'None';
-                    
-                    let code = '';
-                    if (cmd.includes('FILESYSTEM:READFILE')) {
-                      code = `scpi.write(${JSON.stringify(cmd)})\ndata = scpi.read_raw()\npathlib.Path("${fn}").write_bytes(data)`;
-                    } else if (cmd === 'CURVe?' || cmd.startsWith('CURV') || !cmd) {
-                      code = `preamble, data = read_waveform_binary(scpi, source='${source}', start=${start}, stop=${stop}, width=${width}, encoding='${encoding}')\npathlib.Path("${fn}").write_bytes(data)`;
-                    } else {
-                      code = `scpi.write("${cmd}")\ndata = scpi.query_binary_values('', datatype='B', container=bytes)\npathlib.Path("${fn}").write_bytes(data)`;
-                    }
-                    
-                    return (
+                  {/* SCPI Preview - Improved Layout */}
+                  <div className={`mt-3 ${selectedStepData.type === 'set_and_query' || selectedStepData.type === 'connect' || selectedStepData.type === 'disconnect' ? 'hidden' : ''}`}>
+                    <div className="text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wide">Python Preview</div>
+                    {selectedStepData.type === 'query' && (() => {
+                      const cmd = substituteSCPI(
+                        selectedStepData.params.command || '', 
+                        deduplicatedParams || selectedStepData.params.cmdParams || [], 
+                        selectedStepData.params.paramValues || {}
+                      ) || selectedStepData.params.command || '';
+                      const isTmDevices = cmd.includes('.commands.') || cmd.includes('.add_') || cmd.includes('.save_');
+                      const isTekHSI = (cmd.startsWith('scope.') && !isTmDevices) || cmd.startsWith('#');
+                      const varName = selectedStepData.params.saveAs;
+                      
+                      if (isTmDevices || isTekHSI) {
+                        return (
+                          <div className="p-2 bg-slate-800 rounded text-[11px] font-mono text-green-400 break-all">
+                            {varName && <span className="text-blue-400">{varName}</span>}
+                            {varName && <span className="text-white"> = </span>}
+                            <span className="text-green-400">{cmd}</span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="p-2 bg-slate-800 rounded text-[11px] font-mono break-all">
+                          {varName && <><span className="text-blue-400">{varName}</span><span className="text-white"> = </span></>}
+                          <span className="text-yellow-400">scpi</span>
+                          <span className="text-white">.</span>
+                          <span className="text-blue-300">query</span>
+                          <span className="text-white">(</span>
+                          <span className="text-green-400">{JSON.stringify(cmd)}</span>
+                          <span className="text-white">)</span>
+                        </div>
+                      );
+                    })()}
+                    {selectedStepData.type === 'write' && (() => {
+                      const cmd = substituteSCPI(
+                        selectedStepData.params.command || '', 
+                        deduplicatedParams || selectedStepData.params.cmdParams || [], 
+                        selectedStepData.params.paramValues || {}
+                      ) || selectedStepData.params.command || '';
+                      const isTmDevices = cmd.includes('.commands.') || cmd.includes('.add_') || cmd.includes('.save_');
+                      const isTekHSI = (cmd.startsWith('scope.') && !isTmDevices) || cmd.startsWith('#');
+                      if (isTmDevices || isTekHSI) {
+                        return (
+                          <div className="p-2 bg-slate-800 rounded text-[11px] font-mono text-green-400 break-all">
+                            {cmd}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="p-2 bg-slate-800 rounded text-[11px] font-mono break-all">
+                          <span className="text-yellow-400">scpi</span>
+                          <span className="text-white">.</span>
+                          <span className="text-blue-300">write</span>
+                          <span className="text-white">(</span>
+                          <span className="text-green-400">{JSON.stringify(cmd)}</span>
+                          <span className="text-white">)</span>
+                        </div>
+                      );
+                    })()}
+                    {selectedStepData.type === 'sleep' && (
                       <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto border border-gray-700 font-mono text-xs leading-relaxed">
-                        <code className="text-green-400 whitespace-pre">{code}</code>
+                        <code className="text-green-400">time.sleep({selectedStepData.params.duration})</code>
                       </pre>
-                    );
-                  })()}
-                  {selectedStepData.type === 'save_screenshot' && (() => {
-                    const fn = selectedStepData.params.filename || 'screenshot.png';
-                    const scopeType = selectedStepData.params.scopeType || 'modern';
-                    
-                    // Check if any device uses socket connection
-                    const boundDevice = selectedStepData.boundDeviceId 
-                      ? devices.find(d => d.id === selectedStepData.boundDeviceId)
-                      : devices[0];
-                    const isRawSocket = boundDevice?.connectionType === 'socket';
-                    
-                    let code = '';
-                    if (isRawSocket) {
-                      code = `# Raw socket screenshot (high performance)
-# Requires: helper/socket_instr.py
-from socket_instr import SocketInstr
-sock = SocketInstr('${boundDevice?.host || '127.0.0.1'}', ${boundDevice?.port || 4000})
-img_data = sock.fetch_screen("C:/Temp/screenshot.png")
-pathlib.Path("./screenshots/${fn}").write_bytes(img_data)
-sock.close()`;
-                    } else if (scopeType === 'modern') {
-                      code = `# Modern MSO 4/5/6 series
-scpi.write('SAVE:IMAGE "C:/Temp/screenshot.png"')
-time.sleep(1.0)
-scpi.write('FILESYSTEM:READFILE "C:/Temp/screenshot.png"')
-data = scpi.read_raw()
-pathlib.Path("./screenshots/${fn}").write_bytes(data)
-scpi.write('FILESYSTEM:DELETE "C:/Temp/screenshot.png"')`;
-                    } else {
-                      code = `# Legacy 5k/7k/70k series
-scpi.write('HARDCOPY:PORT FILE')
-scpi.write('HARDCOPY:FORMAT PNG')
-scpi.write('HARDCOPY:FILENAME "C:/TekScope/Temp/screenshot.png"')
-scpi.write('HARDCOPY START')
-time.sleep(1.0)
-scpi.write('FILESYSTEM:READFILE "C:/TekScope/Temp/screenshot.png"')
-data = scpi.read_raw()
-pathlib.Path("./screenshots/${fn}").write_bytes(data)
-scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
-                    }
-                    
-                    return (
+                    )}
+                    {selectedStepData.type === 'comment' && (
                       <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto border border-gray-700 font-mono text-xs leading-relaxed">
-                        <code className="text-pink-400 whitespace-pre">{code}</code>
+                        <code className="text-green-400"># {selectedStepData.params.text || selectedStepData.label || ''}</code>
                       </pre>
-                    );
-                  })()}
-                  {selectedStepData.type === 'group' && `# Group: ${selectedStepData.label}`}
-                  {selectedStepData.type === 'error_check' && (() => {
-                    const cmd = selectedStepData.params.command || 'ALLEV?';
-                    const code = `try:\n    err = scpi.query("${cmd}")\n    log_cmd("${cmd}", err)\nexcept Exception:\n    pass`;
-                    return (
-                      <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto border border-gray-700 font-mono text-xs leading-relaxed">
-                        <code className="text-green-400 whitespace-pre">{code}</code>
-                      </pre>
-                    );
-                  })()}
+                    )}
+                    {selectedStepData.type === 'save_waveform' && (() => {
+                      const cmd = selectedStepData.params.command || 'CURVe?';
+                      const fn = selectedStepData.params.filename || 'data.bin';
+                      const source = selectedStepData.params.source || 'CH1';
+                      const width = selectedStepData.params.width || 1;
+                      const encoding = selectedStepData.params.encoding || 'RIBinary';
+                      const start = selectedStepData.params.start || 1;
+                      const stop = selectedStepData.params.stop || 'None';
+                      
+                      let code = '';
+                      if (cmd.includes('FILESYSTEM:READFILE')) {
+                        code = `scpi.write(${JSON.stringify(cmd)})\ndata = scpi.read_raw()\npathlib.Path("${fn}").write_bytes(data)`;
+                      } else if (cmd === 'CURVe?' || cmd.startsWith('CURV') || !cmd) {
+                        code = `preamble, data = read_waveform_binary(scpi, source='${source}', start=${start}, stop=${stop}, width=${width}, encoding='${encoding}')\npathlib.Path("${fn}").write_bytes(data)`;
+                      } else {
+                        code = `scpi.write("${cmd}")\ndata = scpi.query_binary_values('', datatype='B', container=bytes)\npathlib.Path("${fn}").write_bytes(data)`;
+                      }
+                      
+                      return (
+                        <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto border border-gray-700 font-mono text-xs leading-relaxed">
+                          <code className="text-green-400 whitespace-pre">{code}</code>
+                        </pre>
+                      );
+                    })()}
+                    {selectedStepData.type === 'group' && `# Group: ${selectedStepData.label}`}
+                    {selectedStepData.type === 'error_check' && (() => {
+                      const cmd = selectedStepData.params.command || 'ALLEV?';
+                      const code = `try:\n    err = scpi.query("${cmd}")\n    log_cmd("${cmd}", err)\nexcept Exception:\n    pass`;
+                      return (
+                        <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto border border-gray-700 font-mono text-xs leading-relaxed">
+                          <code className="text-green-400 whitespace-pre">{code}</code>
+                        </pre>
+                      );
+                    })()}
                   {selectedStepData.type === 'connect' && (() => {
                     const instId = selectedStepData.params?.instrumentId || selectedStepData.params?.instrumentIds?.[0];
                     const inst = devices.find(d => d.id === instId);
@@ -10540,6 +9097,7 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                     const insts = instIds.map((id: string) => devices.find((d: DeviceEntry) => d.id === id)).filter((d: DeviceEntry | undefined): d is DeviceEntry => d !== undefined);
                     return insts.length > 0 ? `# Disconnect: ${insts.map((i: DeviceEntry) => i.alias).join(', ')}` : '# Disconnect step';
                   })()}
+                  </div>
                   
                   {/* Connect Step Properties */}
                   {selectedStepData.type === 'connect' && (
@@ -10787,31 +9345,15 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
               <button
                 onClick={() => {
                   setSelectedCategory(null);
-                  setShowPopularOnly(false);
                   setLibraryVisibleCount(50);
                 }}
                 className={`w-full text-left px-3 py-2 text-sm rounded transition ${
-                  selectedCategory === null && !showPopularOnly
+                  selectedCategory === null
                     ? 'bg-blue-100 text-blue-700 font-medium'
                     : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
                 All ({commandLibrary.filter(isCommandCompatible).length})
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedCategory(null);
-                  setShowPopularOnly(true);
-                  setLibraryVisibleCount(50);
-                }}
-                className={`w-full text-left px-3 py-2 text-sm rounded transition flex items-center gap-2 ${
-                  showPopularOnly
-                    ? 'bg-yellow-100 text-yellow-700 font-medium'
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <Star size={14} className={showPopularOnly ? 'text-yellow-500 fill-yellow-500' : 'text-gray-400'} />
-                <span>Popular</span>
               </button>
             </div>
             <div className="p-2 space-y-1">
@@ -10820,7 +9362,7 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                   key={name}
                   onClick={() => toggleCategory(name)}
                   className={`w-full text-left px-3 py-2 text-sm rounded transition flex items-center justify-between ${
-                    selectedCategory === name && !showPopularOnly
+                    selectedCategory === name
                       ? `${categoryColors[name] || 'bg-blue-100 text-blue-700'} font-medium`
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -10861,34 +9403,6 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                     </button>
                   )}
                 </div>
-                <button
-                  onClick={() => {
-                    setShowTmDevicesBrowser(true);
-                    setTmDevicesBrowserCallback(() => (cmd: TmDeviceCommand) => {
-                      // Add command directly to flow
-                      const newStep: Step = {
-                        id: crypto.randomUUID(),
-                        type: 'tm_device_command',
-                        label: cmd.description || 'tm_devices Command',
-                        params: {
-                          code: cmd.code,
-                          model: cmd.model,
-                          description: cmd.description
-                        },
-                        collapsed: false
-                      };
-                      commit([...steps, newStep]);
-                      setSelectedStep(newStep.id);
-                      setCurrentView('builder'); // Switch to Builder view
-                      triggerControls.triggerAnimation('success');
-                    });
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors whitespace-nowrap"
-                  title="Browse tm_devices commands and add to workflow"
-                >
-                  <Zap size={14} />
-                  tm_devices Browser
-                </button>
                 <div className="relative" title={deviceFamilies.find(f => f.id === selectedDeviceFamily)?.tooltip || ''}>
                   <select
                     value={selectedDeviceFamily}
@@ -10916,19 +9430,6 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                     <span>Loading...</span>
                   </div>
                 )}
-              </div>
-              
-              {/* SCPI Parameter Selector - appears automatically when typing parameterized commands */}
-              <div className="px-3">
-                <SCPICommandTreeBuilder
-                  commands={filteredCommands}
-                  searchQuery={searchQuery}
-                  onSelectParameter={(resolved, index) => {
-                    // Update search to the resolved command
-                    setSearchQuery(resolved);
-                    setLibraryVisibleCount(50);
-                  }}
-                />
               </div>
             </div>
 
@@ -11153,70 +9654,6 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                   </div>
                 )}
 
-                {/* Options from Syntax (for commands like TYPe that have {OPTION1|OPTION2|...} in syntax) */}
-                {(() => {
-                  // Extract options from syntax array
-                  const syntaxArray = (selectedLibraryCommand as any).syntax;
-                  if (!syntaxArray || !Array.isArray(syntaxArray)) return null;
-                  
-                  const allOptions: string[] = [];
-                  syntaxArray.forEach((syntaxLine: string) => {
-                    const optionMatches = syntaxLine.match(/\{([^}]+)\}/g);
-                    if (optionMatches) {
-                      optionMatches.forEach(match => {
-                        const inner = match.slice(1, -1);
-                        const opts = inner.split('|')
-                          .map(o => o.trim().replace(/\s+/g, ''))
-                          .filter(o => o && !o.includes('<') && !o.includes('>'));
-                        allOptions.push(...opts);
-                      });
-                    }
-                  });
-                  
-                  // Remove duplicates
-                  const uniqueOptions = Array.from(new Set(allOptions));
-                  if (uniqueOptions.length === 0) return null;
-                  
-                  return (
-                    <div className="p-4 border-b">
-                      <h4 className="text-xs font-semibold text-gray-700 uppercase mb-2">
-                        Available Options ({uniqueOptions.length})
-                      </h4>
-                      <div className="flex flex-wrap gap-1 max-h-48 overflow-y-auto">
-                        {uniqueOptions.map((option, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              // Replace <x> with 1 and add the option
-                              const baseCmd = selectedLibraryCommand.scpi.replace(/<[xXnN]>/g, '1');
-                              const fullCmd = `${baseCmd} ${option}`;
-                              // Add to flow
-                              const newStep: Step = {
-                                id: crypto.randomUUID(),
-                                type: 'write',
-                                label: `${selectedLibraryCommand.name}: ${option}`,
-                                params: { command: fullCmd },
-                                collapsed: false
-                              };
-                              commit([...steps, newStep]);
-                              setSelectedStep(newStep.id);
-                              setCurrentView('builder');
-                              triggerControls.triggerAnimation('success');
-                            }}
-                            className="px-2 py-1 text-xs font-mono bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 hover:border-green-400 rounded transition-all cursor-pointer"
-                            title={`Add: ${selectedLibraryCommand.scpi.replace(/<[xXnN]>/g, '1')} ${option}`}
-                          >
-                            {option}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-2 italic">
-                        Click an option to add the command to your flow
-                      </p>
-                    </div>
-                  );
-                })()}
-
                 {/* Query Response */}
                 {selectedLibraryCommand.manualEntry?.queryResponse && (
                   <div className="p-4 border-b">
@@ -11328,17 +9765,7 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                       : 'border-transparent text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  📊 Steps Templates
-                </button>
-                <button
-                  onClick={() => setTemplateTab('blockly')}
-                  className={`px-4 py-2 text-xs font-medium border-b-2 transition ${
-                    templateTab === 'blockly' 
-                      ? 'border-purple-600 text-purple-600' 
-                      : 'border-transparent text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  🧩 Blockly Templates
+                  📊 Built-in Templates
                 </button>
                 <button
                   onClick={() => setTemplateTab('tekexpress')}
@@ -11423,9 +9850,6 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                         >
                           <div className="font-semibold text-sm mb-1">{t.name}</div>
                           <div className="flex gap-1 mb-2 flex-wrap">
-                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-300">
-                              📊 Steps
-                            </span>
                             {t.backend && (
                               <>
                                 {t.backend === 'hybrid' ? (
@@ -11473,57 +9897,6 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
               </div>
             )}
 
-            {/* Blockly Templates Tab */}
-            {templateTab === 'blockly' && (
-              <div>
-                {blocklyTemplates.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">
-                    <p className="text-sm">No Blockly templates available</p>
-                    <p className="text-xs mt-2">Blockly templates will appear here when available</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {blocklyTemplates.map((t, idx) => (
-                      <div key={idx} className="p-3 bg-white border rounded hover:shadow-md transition">
-                        <div className="font-semibold text-sm mb-1">{t.name}</div>
-                        <div className="flex gap-1 mb-2 flex-wrap">
-                          <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-300">
-                            🧩 Blockly
-                          </span>
-                          {t.backend && (
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              t.backend === 'tm_devices' ? 'bg-green-100 text-green-700 border border-green-300' :
-                              t.backend === 'tekhsi' ? 'bg-red-100 text-red-700 border border-red-300' :
-                              'bg-blue-100 text-blue-700 border border-blue-300'
-                            }`}>
-                              {t.backend === 'tm_devices' ? '🔧 tm_devices' : 
-                               t.backend === 'tekhsi' ? '⚡ TekHSI' : 
-                               'PyVISA'}
-                            </span>
-                          )}
-                          {t.deviceType && (
-                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-300">
-                              {TM_DEVICE_TYPES[t.deviceType]?.label || t.deviceType}
-                            </span>
-                          )}
-                          {t.deviceDriver && (
-                            <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-300">
-                              {t.deviceDriver}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-600 my-2">{t.description}</div>
-                        <div className="flex gap-2">
-                          <button onClick={() => loadBlocklyTemplate(t)} className="flex-1 px-3 py-1.5 bg-purple-600 text-white rounded text-xs hover:bg-purple-700">Load in Blockly</button>
-                          <button onClick={() => exportTemplate(t)} className="px-3 py-1.5 bg-gray-100 rounded text-xs hover:bg-gray-200">Export</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* TekExpress Templates Tab */}
             {templateTab === 'tekexpress' && (
               <div>
@@ -11540,9 +9913,6 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                         <div key={idx} className="p-3 bg-white border rounded hover:shadow-md transition">
                           <div className="font-semibold text-sm mb-1">{t.name}</div>
                           <div className="flex gap-1 mb-2 flex-wrap">
-                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-300">
-                              📊 Steps
-                            </span>
                             {t.backend && (
                               <span className={`text-xs px-2 py-0.5 rounded ${
                                 t.backend === 'tm_devices' ? 'bg-green-100 text-green-700 border border-green-300' :
@@ -11589,35 +9959,30 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
                       <div key={idx} className="p-3 bg-white border rounded hover:shadow-md transition">
                         <div className="font-semibold text-sm mb-1">{t.name}</div>
                         <div className="text-xs text-gray-600 my-2">{t.description}</div>
-                        <div className="mb-2 flex gap-1 flex-wrap">
-                          <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-300">
-                            📊 Steps
-                          </span>
-                          {t.backend && (
-                            <>
-                              {t.backend === 'hybrid' ? (
-                                <>
-                                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-300">
-                                    PyVISA
-                                  </span>
-                                  <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded border border-red-300">
-                                    ⚡ TekHSI
-                                  </span>
-                                </>
-                              ) : (
-                                <span className={`text-xs px-2 py-0.5 rounded ${
-                                  t.backend === 'tm_devices' ? 'bg-green-100 text-green-700 border border-green-300' :
-                                  t.backend === 'tekhsi' ? 'bg-red-100 text-red-700 border border-red-300' :
-                                  'bg-gray-100 text-gray-700 border border-gray-300'
-                                }`}>
-                                  {t.backend === 'tm_devices' ? '🔧 tm_devices' : 
-                                   t.backend === 'tekhsi' ? '⚡ TekHSI' : 
-                                   t.backend}
+                        {t.backend && (
+                          <div className="mb-2 flex gap-1 flex-wrap">
+                            {t.backend === 'hybrid' ? (
+                              <>
+                                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-300">
+                                  PyVISA
                                 </span>
-                              )}
-                            </>
-                          )}
-                        </div>
+                                <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded border border-red-300">
+                                  ⚡ TekHSI
+                                </span>
+                              </>
+                            ) : (
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                t.backend === 'tm_devices' ? 'bg-green-100 text-green-700 border border-green-300' :
+                                t.backend === 'tekhsi' ? 'bg-red-100 text-red-700 border border-red-300' :
+                                'bg-gray-100 text-gray-700 border border-gray-300'
+                              }`}>
+                                {t.backend === 'tm_devices' ? '🔧 tm_devices' : 
+                                 t.backend === 'tekhsi' ? '⚡ TekHSI' : 
+                                 t.backend}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className="flex gap-2">
                           <button onClick={() => loadTemplateAppend(t)} className="flex-1 px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">Append</button>
                           <button onClick={() => exportTemplate(t)} className="px-3 py-1.5 bg-gray-100 rounded text-xs hover:bg-gray-200">Export</button>
@@ -11639,12 +10004,11 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
       {currentView === 'flow-designer' && (
           <BlocklyBuilder
           devices={devices.length > 0 ? devices : [{ ...config, id: 'default', enabled: true }]}
-          steps={steps as any}
+          steps={steps}
           workspaceXml={blocklyWorkspace}
           onWorkspaceChange={setBlocklyWorkspace}
           commands={commandLibrary}
           categoryColors={categoryColors}
-          deviceFamilies={deviceFamilies}
           onExportToSteps={(exportedSteps) => {
             // Replace steps with exported steps from Blockly
             // Map to ensure type compatibility (Step types are compatible but from different modules)
@@ -12287,165 +10651,6 @@ scpi.write('FILESYSTEM:DELETE "C:/TekScope/Temp/screenshot.png"')`;
         </div>
       )}
 
-      {/* Steps UI AI Builder Prompt Input Modal */}
-      {showStepsAIPromptInput && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
-            <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-purple-500 to-indigo-500 rounded-t-lg">
-              <div className="flex items-center gap-2 text-white">
-                <Sparkles size={20} />
-                <h3 className="text-lg font-semibold">AI Builder (Steps JSON)</h3>
-              </div>
-              <button
-                onClick={() => setShowStepsAIPromptInput(false)}
-                className="text-white hover:text-gray-200"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4">
-              <textarea
-                value={stepsAIPromptText}
-                onChange={(e) => setStepsAIPromptText(e.target.value)}
-                placeholder="Describe your automation workflow...&#10;&#10;Example: Connect to scope, set CH1 scale to 1V, add frequency measurement, capture screenshot, disconnect"
-                className="w-full h-32 p-3 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-              />
-              <div className="mt-3 p-3 bg-purple-50 rounded-lg text-xs text-purple-700">
-                <p className="font-medium">How it works:</p>
-                <ol className="mt-1 ml-4 list-decimal space-y-1">
-                  <li>Describe your workflow above</li>
-                  <li>Click "Generate" - prompt is copied to clipboard</li>
-                  <li>TekAutomate GPT JSON Builder opens - paste the prompt</li>
-                  <li>Copy the JSON output</li>
-                  <li>Click "Paste JSON" in the toolbar to load it</li>
-                </ol>
-              </div>
-            </div>
-            <div className="p-4 border-t flex justify-end gap-2">
-              <button
-                onClick={() => setShowStepsAIPromptInput(false)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  if (!stepsAIPromptText.trim()) {
-                    alert('Please describe what you want to do');
-                    return;
-                  }
-                  
-                  // Build context-rich prompt with current workflow state
-                  const deviceInfo = devices.map(d => `  - ${d.alias}: ${d.deviceType}, ${d.backend} @ ${d.host || 'localhost'}`).join('\n');
-                  
-                  // Serialize current steps to JSON
-                  const currentStepsJson = JSON.stringify({
-                    name: 'Current Workflow',
-                    backend: config.backend,
-                    steps: steps
-                  }, null, 2);
-                  
-                  const prompt = `Here is the current workspace state:
-
---- CURRENT STEPS JSON ---
-${currentStepsJson}
---- END JSON ---
-
-Workspace context:
-- Backend: ${config.backend}
-- Instruments in workspace:
-${deviceInfo || '  - scope: SCOPE, pyvisa @ localhost'}
-
-User request:
-${stepsAIPromptText}
-
-Instructions:
-- Generate valid TekAutomate Steps UI JSON
-- Preserve existing steps when possible
-- Fix errors if present
-- Add missing steps if needed
-- Output ONLY the JSON (no markdown code blocks)
-`;
-
-                  // Copy to clipboard with error handling
-                  try {
-                    await navigator.clipboard.writeText(prompt);
-                    setStepsAIPromptCopied(true);
-                    setTimeout(() => setStepsAIPromptCopied(false), 3000);
-                  } catch (err) {
-                    // Fallback: show prompt in alert for manual copy
-                    console.error('Clipboard write failed:', err);
-                    window.prompt('Copy this prompt (Ctrl+C):', prompt);
-                  }
-                  
-                  // Open the GPT
-                  const gptUrl = 'https://chatgpt.com/g/g-6981a42361c8819187d7f9db53ac7c50-tekautomate-steps-ui-json-builder';
-                  window.open(gptUrl, '_blank');
-                  
-                  setShowStepsAIPromptInput(false);
-                  setShowStepsAIFallback(true);
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-lg text-sm font-medium flex items-center gap-2"
-              >
-                <Sparkles size={16} />
-                Generate & Open GPT
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Steps UI AI Builder Fallback Modal */}
-      {showStepsAIFallback && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md">
-            <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-green-500 to-teal-500 rounded-t-lg">
-              <div className="flex items-center gap-2 text-white">
-                <Check size={20} />
-                <h3 className="text-lg font-semibold">Prompt Copied!</h3>
-              </div>
-              <button
-                onClick={() => setShowStepsAIFallback(false)}
-                className="text-white hover:text-gray-200"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800 font-medium">Next Steps:</p>
-                <ol className="text-sm text-blue-700 mt-2 ml-4 list-decimal space-y-1">
-                  <li>Paste the prompt in the GPT chat (Ctrl+V)</li>
-                  <li>Wait for the JSON to be generated</li>
-                  <li>Copy the JSON output</li>
-                  <li>Click <strong>"Paste JSON"</strong> in the toolbar</li>
-                </ol>
-              </div>
-
-              <div className="mt-4 text-xs text-gray-500">
-                <p><strong>GPT not opening?</strong> Your browser may have blocked the popup.</p>
-                <a 
-                  href="https://chatgpt.com/g/g-6981a42361c8819187d7f9db53ac7c50-tekautomate-steps-ui-json-builder"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-600 hover:underline"
-                >
-                  Click here to open TekAutomate Steps UI JSON Builder →
-                </a>
-              </div>
-            </div>
-            <div className="p-4 border-t flex justify-end">
-              <button
-                onClick={() => setShowStepsAIFallback(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* About Modal */}
       {showAboutModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowAboutModal(false)}>
@@ -12456,8 +10661,8 @@ Instructions:
                   <Zap className="h-7 w-7 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">TekAutomate</h2>
-                  <p className="text-sm text-gray-500">Version 2.0.4</p>
+                  <h2 className="text-2xl font-bold text-gray-900">Tek Automator</h2>
+                  <p className="text-sm text-gray-500">Version 1.0</p>
                 </div>
               </div>
               <button onClick={() => setShowAboutModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -12466,18 +10671,12 @@ Instructions:
             </div>
 
             <div className="space-y-4 text-gray-700">
-              {/* Beta Disclaimer */}
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-sm text-amber-800">
-                  <strong>Beta Release:</strong> This software is for testing purposes only. All generated outputs should be reviewed and verified before use in production environments.
-                </p>
-              </div>
-
               <div>
                 <h3 className="font-semibold text-lg mb-2">About</h3>
                 <p className="text-sm leading-relaxed">
-                  TekAutomate is a visual programming tool for automating Tektronix test equipment. 
-                  Build test sequences with a drag-and-drop interface and generate Python code for your automation workflow.
+                  Tek Automator is a powerful visual programming tool for automating Tektronix test equipment. 
+                  Build complex test sequences with an intuitive drag-and-drop interface, generate Python code, 
+                  and streamline your test automation workflow.
                 </p>
               </div>
 
@@ -12485,21 +10684,25 @@ Instructions:
                 <h3 className="font-semibold text-lg mb-2">Features</h3>
                 <ul className="text-sm space-y-1 list-disc list-inside">
                   <li>Visual workflow builder with drag-and-drop interface</li>
-                  <li>Multiple instrument backends (PyVISA, tm_devices, VXI-11, TekHSI)</li>
-                  <li>Comprehensive SCPI command library</li>
-                  <li>Python code generation</li>
+                  <li>Support for multiple instrument backends (PyVISA, tm_devices, VXI-11, TekHSI)</li>
+                  <li>Comprehensive command library with 1000+ SCPI commands</li>
+                  <li>Python code generation with optimized performance</li>
                   <li>Template system for common test scenarios</li>
+                  <li>Interactive tour and setup wizard</li>
                 </ul>
               </div>
 
               <div>
-                <h3 className="font-semibold text-lg mb-2">Author</h3>
-                <p className="text-sm">Ab Nasim (ab.nasim@tek.com)</p>
+                <h3 className="font-semibold text-lg mb-2">Resources</h3>
+                <div className="text-sm space-y-1">
+                  <p>Documentation: Check the <code className="bg-gray-100 px-1 rounded">docs/</code> folder</p>
+                  <p>Support: Contact your Tektronix representative</p>
+                </div>
               </div>
 
               <div className="pt-4 border-t">
                 <p className="text-xs text-gray-500 text-center">
-                  © 2026 Tektronix, Inc. All rights reserved.
+                  © 2024 Tektronix, Inc. All rights reserved.
                 </p>
               </div>
             </div>
@@ -12595,102 +10798,6 @@ Instructions:
       )}
       <AcademyModal />
       
-      {/* tm_devices Help Modal */}
-      {showTmDevicesHelp && tmDevicesHelpInfo && (() => {
-        const { code, path, model } = tmDevicesHelpInfo;
-        
-        // Try to get docstring synchronously (if loaded)
-        let docstring: any = null;
-        try {
-          const { getDocstring } = require('./components/docstrings');
-          docstring = getDocstring(model, path);
-        } catch {
-          // Docstrings not loaded yet or error
-        }
-        
-        return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowTmDevicesHelp(false)}>
-            <div
-              className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="p-4 border-b flex items-center justify-between bg-gradient-to-r from-purple-50 to-white">
-                <h2 className="text-xl font-bold text-gray-900">tm_devices Command Help</h2>
-                <button onClick={() => setShowTmDevicesHelp(false)} className="p-2 hover:bg-gray-100 rounded transition">
-                  <X size={20} />
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="p-6 overflow-y-auto flex-1">
-                <div className="mb-4">
-                  <code className="text-sm font-mono bg-gray-100 px-3 py-2 rounded block text-purple-600">
-                    {code}
-                  </code>
-                </div>
-                
-                {docstring ? (
-                  <>
-                    {docstring.description && (
-                      <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-2">Description</h3>
-                        <p className="text-sm text-gray-700">{docstring.description}</p>
-                      </div>
-                    )}
-                    
-                    {docstring.usage && docstring.usage.length > 0 && (
-                      <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-2">Usage</h3>
-                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {docstring.usage.map((usage: string, idx: number) => (
-                            <li key={idx}>{usage}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {docstring.scpiSyntax && (
-                      <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-2">SCPI Syntax</h3>
-                        <code className="text-sm font-mono bg-gray-100 px-3 py-2 rounded block">
-                          {docstring.scpiSyntax}
-                        </code>
-                      </div>
-                    )}
-                    
-                    {docstring.info && docstring.info.length > 0 && (
-                      <div className="mb-4">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-2">Info</h3>
-                        <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                          {docstring.info.map((info: string, idx: number) => (
-                            <li key={idx}>{info}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-sm text-gray-500">
-                    No documentation available for this command.
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="p-4 border-t flex justify-end">
-                <button
-                  onClick={() => setShowTmDevicesHelp(false)}
-                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* SCPI Help Modal - Uses SCPIHelpModal for rich SCPI structure display */}
       {showSCPIHelp && selectedStepData && (() => {
         const command = selectedStepData?.params?.command || '';

@@ -1,6 +1,26 @@
 /* ===================== Channel Configuration Blocks ===================== */
 
 import * as Blockly from 'blockly';
+import { getChannelCount, generateChannelOptions } from '../constants/tmDeviceTypes';
+
+// Store the active device driver for dynamic channel options
+// This is set by BlocklyBuilder when the workspace is initialized or device changes
+let activeDeviceDriver: string | undefined;
+
+export function setActiveDeviceDriver(driver: string | undefined) {
+  activeDeviceDriver = driver;
+}
+
+export function getActiveDeviceDriver(): string | undefined {
+  return activeDeviceDriver;
+}
+
+// Dynamic channel dropdown generator function
+// Returns channel options based on the active device driver
+function dynamicChannelDropdown(): [string, string][] {
+  const channelCount = getChannelCount(activeDeviceDriver);
+  return generateChannelOptions(channelCount);
+}
 
 // Configure Channel Block
 Blockly.Blocks['configure_channel'] = {
@@ -8,12 +28,7 @@ Blockly.Blocks['configure_channel'] = {
     this.appendDummyInput()
         .appendField('📺 Configure Channel')
         .appendField('Channel:')
-        .appendField(new Blockly.FieldDropdown([
-          ['CH1', 'CH1'],
-          ['CH2', 'CH2'],
-          ['CH3', 'CH3'],
-          ['CH4', 'CH4']
-        ]), 'CHANNEL');
+        .appendField(new Blockly.FieldDropdown(dynamicChannelDropdown), 'CHANNEL');
     this.appendDummyInput()
         .appendField('Scale:')
         .appendField(new Blockly.FieldNumber(1.0, 0.001, 100), 'SCALE')
@@ -38,7 +53,7 @@ Blockly.Blocks['configure_channel'] = {
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(195); // Modern theme cyan
-    this.setTooltip('Configure channel settings (scale, offset, coupling, termination)');
+    this.setTooltip('Configure channel settings (scale, offset, coupling, termination).\nChannel options are based on the connected instrument model.');
     this.setHelpUrl('');
   }
 };
@@ -49,18 +64,13 @@ Blockly.Blocks['enable_channel'] = {
     this.appendDummyInput()
         .appendField('📺 Enable Channel')
         .appendField('Channel:')
-        .appendField(new Blockly.FieldDropdown([
-          ['CH1', 'CH1'],
-          ['CH2', 'CH2'],
-          ['CH3', 'CH3'],
-          ['CH4', 'CH4']
-        ]), 'CHANNEL')
+        .appendField(new Blockly.FieldDropdown(dynamicChannelDropdown), 'CHANNEL')
         .appendField('State:')
         .appendField(new Blockly.FieldCheckbox('TRUE'), 'STATE');
     this.setPreviousStatement(true, null);
     this.setNextStatement(true, null);
     this.setColour(180); // Modern theme teal
-    this.setTooltip('Enable or disable a channel');
+    this.setTooltip('Enable or disable a channel.\nChannel options are based on the connected instrument model.');
     this.setHelpUrl('');
   }
 };

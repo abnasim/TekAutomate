@@ -1143,8 +1143,17 @@ pythonGenerator.forBlock['save_waveform'] = function(block) {
   
   // WFM/MAT: Scope writes the file using SAVE:WAVEFORM
   if (format === 'WFM' || format === 'MAT') {
-    const scopePath = `C:/TekScope/data/${baseName}.${ext}`;
+    // Use /Temp/ which works on both Windows and Linux scopes
+    const scopeTempPath = '/Temp';
+    const scopePath = `${scopeTempPath}/${baseName}.${ext}`;
     code += `# Save ${source} as ${format} (scope-native with full metadata)\n`;
+    code += `# Ensure temp directory exists on scope\n`;
+    code += `try:\n`;
+    code += `    ${device}.write('FILESYSTEM:MKDIR "${scopeTempPath}"')\n`;
+    code += `except:\n`;
+    code += `    pass  # Directory may already exist\n`;
+    code += `# Wait for any pending operations (e.g., acquisition) to complete\n`;
+    code += `${device}.query('*OPC?')\n`;
     code += `${device}.write('SAVE:WAVEFORM ${source},"${scopePath}"')\n`;
     code += `${device}.query('*OPC?')  # Wait for save to complete\n`;
     code += `# Download from scope to local\n`;
@@ -1297,7 +1306,7 @@ pythonGenerator.forBlock['save_screenshot'] = function(block) {
     // Capture and save image on scope
     code += `${device}.write('SAVE:IMAGE:COMPOSITION NORMAL')\n`;
     code += `${device}.write(f'SAVE:IMAGE "{_ss_scope_temp}"')\n`;
-    code += `time.sleep(1.0)  # Wait for save to complete\n`;
+    code += `${device}.query('*OPC?')  # Wait for save to complete\n`;
     
     // Transfer file from scope to PC
     code += `_old_timeout = ${device}.timeout\n`;
@@ -1347,7 +1356,7 @@ pythonGenerator.forBlock['save_screenshot'] = function(block) {
     code += `${device}.write('HARDCOPY:FORMAT ${format.toUpperCase()}')\n`;
     code += `${device}.write(f'HARDCOPY:FILENAME "{_ss_scope_temp}"')\n`;
     code += `${device}.write('HARDCOPY START')\n`;
-    code += `time.sleep(1.0)  # Wait for hardcopy to complete and file write\n`;
+    code += `${device}.query('*OPC?')  # Wait for hardcopy to complete\n`;
     
     // Transfer file from scope to PC
     code += `_old_timeout = ${device}.timeout\n`;
