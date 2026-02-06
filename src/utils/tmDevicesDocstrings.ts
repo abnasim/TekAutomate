@@ -145,7 +145,7 @@ export async function loadDocstrings(): Promise<any> {
   
   docstringsLoading = (async () => {
     try {
-      const response = await fetch('/commands/tm_devices_docstrings.json');
+      const response = await fetch(`${process.env.PUBLIC_URL || ''}/commands/tm_devices_docstrings.json`);
       if (!response.ok) {
         console.warn('Failed to load tm_devices_docstrings.json:', response.statusText);
         return null;

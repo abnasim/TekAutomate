@@ -154,7 +154,7 @@ export const TmDevicesCommandBrowser: React.FC<TmDevicesCommandBrowserProps> = (
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('/commands/tm_devices_full_tree.json');
+        const response = await fetch(`${process.env.PUBLIC_URL || ''}/commands/tm_devices_full_tree.json`);
         if (!response.ok) {
           throw new Error(`Failed to load tm_devices tree: ${response.statusText}`);
         }

@@ -40,7 +40,7 @@ export const LegacyCommandsViewer: React.FC<LegacyCommandsViewerProps> = ({ isOp
     const loadXML = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/commands/Compatibility.xml');
+        const response = await fetch(`${process.env.PUBLIC_URL || ''}/commands/Compatibility.xml`);
         if (!response.ok) {
           throw new Error('Failed to load Compatibility.xml');
         }
